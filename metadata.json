@@ -1,0 +1,6 @@
+{
+  "name": "Ngrok Forwarder",
+  "description": "Native JNI in-process ngrok forwarder exposing local services at 127.0.0.1:8080/* to the internet.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
