@@ -43,8 +43,9 @@ import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Terminal
@@ -676,7 +677,7 @@ fun TestChip(
         border = androidx.compose.foundation.BorderStroke(1.dp, DarkOutline),
         modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)
     ) {
-        Icon(imageVector = Icons.Default.Send, contentDescription = null, modifier = Modifier.size(13.dp))
+        Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(13.dp))
         Spacer(modifier = Modifier.width(6.dp))
         Text(text = label, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
     }
@@ -1117,7 +1118,7 @@ fun PublicTunnelUrlCard(
                     if (isSendingPing) {
                         CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = NeonCyan)
                     } else {
-                        Icon(imageVector = Icons.Default.Send, contentDescription = "Ping", modifier = Modifier.size(16.dp))
+                        Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = "Ping", modifier = Modifier.size(16.dp))
                     }
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("Test AI Chat", fontSize = 12.sp, fontWeight = FontWeight.Bold)
