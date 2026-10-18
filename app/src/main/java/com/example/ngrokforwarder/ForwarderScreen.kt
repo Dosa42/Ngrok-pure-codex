@@ -114,7 +114,8 @@ fun ForwarderScreen(
     val context = LocalContext.current
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
-        val isDesktopDeX = state.dexState.isDexActive || maxWidth >= 600.dp
+        // Enforce desktop layout unconditionally across all window sizes, rotations, and resizing
+        val isDesktopDeX = true
 
         Scaffold(
             modifier = Modifier.fillMaxSize(),
@@ -204,18 +205,29 @@ fun ForwarderScreen(
             }
 
             if (isDesktopDeX) {
-                // Expanded Dual-Pane DevTools Layout for Samsung DeX
-                Row(
-                    modifier = Modifier
+                // Enforced Dual-Pane DevTools Layout (Always selected across all rotations & sizes)
+                val isNarrow = maxWidth < 750.dp
+                val rowModifier = if (isNarrow) {
+                    Modifier
                         .fillMaxSize()
                         .padding(innerPadding)
-                        .padding(16.dp),
+                        .padding(16.dp)
+                        .horizontalScroll(rememberScrollState())
+                } else {
+                    Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                        .padding(16.dp)
+                }
+
+                Row(
+                    modifier = rowModifier,
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // Left Control Pane (Fixed width ~ 400dp)
+                    // Left Control Pane
                     Column(
                         modifier = Modifier
-                            .width(400.dp)
+                            .width(if (isNarrow) 360.dp else 400.dp)
                             .fillMaxHeight()
                             .verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -286,10 +298,10 @@ fun ForwarderScreen(
 
                     VerticalDivider(color = DarkOutline, thickness = 1.dp)
 
-                    // Right Live Terminal Pane (Flex 1)
+                    // Right Live Terminal Pane
                     Column(
                         modifier = Modifier
-                            .weight(1f)
+                            .then(if (isNarrow) Modifier.width(420.dp) else Modifier.weight(1f))
                             .fillMaxHeight(),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {

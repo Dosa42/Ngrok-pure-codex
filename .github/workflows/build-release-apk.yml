@@ -139,31 +139,34 @@ jobs:
           set -x
           chmod +x gradlew
           BUILD_TYPE="${{ inputs.build_type || 'both' }}"
-          echo "Executing Gradle build for mode: $BUILD_TYPE"
+          VERSION_ARGS="-PversionCode=${{ github.run_number }} -PversionName=1.0.${{ github.run_number }}"
+          echo "Executing Gradle build for mode: $BUILD_TYPE with $VERSION_ARGS"
           if [ "$BUILD_TYPE" = "debug" ]; then
-            ./gradlew :app:assembleDebug --no-daemon --stacktrace
+            ./gradlew :app:assembleDebug $VERSION_ARGS --no-daemon --stacktrace
           elif [ "$BUILD_TYPE" = "release" ]; then
-            ./gradlew :app:assembleRelease --no-daemon --stacktrace
+            ./gradlew :app:assembleRelease $VERSION_ARGS --no-daemon --stacktrace
           else
-            ./gradlew :app:assembleDebug :app:assembleRelease --no-daemon --stacktrace
+            ./gradlew :app:assembleDebug :app:assembleRelease $VERSION_ARGS --no-daemon --stacktrace
           fi
 
       - name: Locate and Package APKs
         id: package_apks
         run: |
           set -x
+          VERSION_TAG="v1.0.${{ github.run_number }}"
+          echo "Packaging APKs for unique build version: $VERSION_TAG"
           mkdir -p app/build/outputs/apk/packaged
 
           DEBUG_APK=$(find app/build/outputs/apk/debug -name "*.apk" 2>/dev/null | head -n 1)
           if [ -n "$DEBUG_APK" ]; then
-            cp "$DEBUG_APK" app/build/outputs/apk/packaged/ngrok-forwarder-debug.apk
-            echo "Debug APK packaged: app/build/outputs/apk/packaged/ngrok-forwarder-debug.apk"
+            cp "$DEBUG_APK" "app/build/outputs/apk/packaged/ngrok-forwarder-debug-${VERSION_TAG}.apk"
+            echo "Debug APK packaged: app/build/outputs/apk/packaged/ngrok-forwarder-debug-${VERSION_TAG}.apk"
           fi
 
           RELEASE_APK=$(find app/build/outputs/apk/release -name "*.apk" 2>/dev/null | head -n 1)
           if [ -n "$RELEASE_APK" ]; then
-            cp "$RELEASE_APK" app/build/outputs/apk/packaged/ngrok-forwarder-release.apk
-            echo "Release APK packaged: app/build/outputs/apk/packaged/ngrok-forwarder-release.apk"
+            cp "$RELEASE_APK" "app/build/outputs/apk/packaged/ngrok-forwarder-release-${VERSION_TAG}.apk"
+            echo "Release APK packaged: app/build/outputs/apk/packaged/ngrok-forwarder-release-${VERSION_TAG}.apk"
           fi
 
           ls -la app/build/outputs/apk/packaged/
@@ -171,7 +174,7 @@ jobs:
       - name: Upload APK Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ngrok-forwarder-apks
+          name: ngrok-forwarder-apks-v1.0.${{ github.run_number }}
           path: app/build/outputs/apk/packaged/*.apk
           retention-days: 30
 

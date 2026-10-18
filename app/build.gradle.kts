@@ -16,8 +16,8 @@ android {
     applicationId = "com.aistudio.ngrokforwarder.vjzt"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    versionCode = project.findProperty("versionCode")?.toString()?.toIntOrNull() ?: 1
+    versionName = project.findProperty("versionName")?.toString() ?: "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     externalNativeBuild {
