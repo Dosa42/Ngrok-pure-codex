@@ -137,7 +137,7 @@ fun ForwarderScreen(
                                 fontSize = 17.sp
                             )
                             TunnelStatusBadge(state.tunnelStatus)
-                            if (isDesktopDeX) {
+                            if (state.dexState.isSamsungDesktopMode || state.dexState.isDesktopUiMode) {
                                 Box(
                                     modifier = Modifier
                                         .background(Color(0xFF1E1B4B), RoundedCornerShape(8.dp))
@@ -155,7 +155,7 @@ fun ForwarderScreen(
                                             modifier = Modifier.size(12.dp)
                                         )
                                         Text(
-                                            text = if (state.dexState.isSamsungDesktopMode) "Samsung DeX" else if (state.dexState.isDesktopUiMode) "Desktop Mode" else "DeX Desktop",
+                                            text = if (state.dexState.isSamsungDesktopMode) "Samsung DeX" else "Desktop Mode",
                                             fontSize = 9.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = Color(0xFFC7D2FE)
@@ -166,17 +166,30 @@ fun ForwarderScreen(
                         }
                     },
                     actions = {
+                        val isOnline = state.tunnelStatus == TunnelStatus.ONLINE
+                        val poolBadgeColor = when {
+                            isOnline && state.poolMetrics.activeConnections > 0 -> EmeraldGreen
+                            isOnline -> NeonCyan
+                            state.tunnelStatus == TunnelStatus.ERROR -> CoralRed
+                            else -> TextMuted
+                        }
+                        val poolBadgeText = when {
+                            isOnline && state.poolMetrics.activeConnections > 0 -> "POOL: ACTIVE (${state.poolMetrics.activeConnections})"
+                            isOnline -> "POOL: IDLE"
+                            state.tunnelStatus == TunnelStatus.ERROR -> "POOL: ERROR"
+                            else -> "POOL: OFFLINE"
+                        }
                         Box(
                             modifier = Modifier
-                                .background(EmeraldGreen.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
-                                .border(1.dp, EmeraldGreen.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                .background(poolBadgeColor.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                                .border(1.dp, poolBadgeColor.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
                             Text(
-                                text = "POOL: ON",
+                                text = poolBadgeText,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = EmeraldGreen
+                                color = poolBadgeColor
                             )
                         }
                         IconButton(
@@ -539,7 +552,13 @@ fun ForwarderScreen(
                             text = state.testPingResult!!,
                             fontFamily = FontFamily.Monospace,
                             fontSize = 12.sp,
-                            color = if (state.testPingResult!!.contains("502") || state.testPingResult!!.contains("Refused")) CoralRed else EmeraldGreen
+                            color = if (state.testPingResult!!.contains("200 OK") || state.testPingResult!!.contains("HTTP/1.1 200") || state.testPingResult!!.contains("HTTP/1.0 200")) {
+                                EmeraldGreen
+                            } else if (state.testPingResult!!.contains("502") || state.testPingResult!!.contains("Refused") || state.testPingResult!!.contains("Error") || state.testPingResult!!.contains("No response") || state.testPingResult!!.contains("failed")) {
+                                CoralRed
+                            } else {
+                                TextPrimary
+                            }
                         )
                     }
                 }
@@ -1251,7 +1270,7 @@ fun TelemetryAndPoolSection(
                         text = "KEEP-ALIVE SOCKET POOL",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = EmeraldGreen,
+                        color = NeonCyan,
                         letterSpacing = 1.sp
                     )
                     Text(
@@ -1269,9 +1288,9 @@ fun TelemetryAndPoolSection(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     PoolStatChip(label = "Idle Sockets", value = poolMetrics.idleCount.toString(), modifier = Modifier.weight(1f))
-                    PoolStatChip(label = "Pool Hits", value = poolMetrics.poolHits.toString(), color = EmeraldGreen, modifier = Modifier.weight(1f))
-                    PoolStatChip(label = "Pool Misses", value = poolMetrics.poolMisses.toString(), modifier = Modifier.weight(1f))
-                    PoolStatChip(label = "Active Sockets", value = poolMetrics.activeConnections.toString(), color = NeonCyan, modifier = Modifier.weight(1f))
+                    PoolStatChip(label = "Pool Hits", value = poolMetrics.poolHits.toString(), color = if (poolMetrics.poolHits > 0) EmeraldGreen else TextPrimary, modifier = Modifier.weight(1f))
+                    PoolStatChip(label = "Pool Misses", value = poolMetrics.poolMisses.toString(), color = if (poolMetrics.poolMisses > 0) AmberYellow else TextPrimary, modifier = Modifier.weight(1f))
+                    PoolStatChip(label = "Active Sockets", value = poolMetrics.activeConnections.toString(), color = if (poolMetrics.activeConnections > 0) NeonCyan else TextPrimary, modifier = Modifier.weight(1f))
                 }
             }
         }

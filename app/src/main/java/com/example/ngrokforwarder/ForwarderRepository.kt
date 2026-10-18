@@ -107,7 +107,7 @@ class ForwarderRepository(context: Context) {
 
                 val runtime = root.optJSONObject("runtime_snapshot")
                 val modelCount = runtime?.optInt("listed_model_count") ?: 0
-                val defaultModel = runtime?.optString("default_model") ?: "gpt-5.6-sol"
+                val defaultModel = runtime?.optString("default_model") ?: ""
 
                 val modelList = mutableListOf<String>()
                 val modelsArr = runtime?.optJSONArray("models")
@@ -290,7 +290,7 @@ class ForwarderRepository(context: Context) {
                     "Codex Catalog (/v1/models/catalog)" to (resp?.let { String(it, StandardCharsets.UTF_8) } ?: "No response")
                 }
                 "CHAT" -> {
-                    val body = "{\"model\":\"gpt-6.1-sol\",\"messages\":[{\"role\":\"user\",\"content\":\"Ping from Ngrok Forwarder\"}],\"stream\":false}"
+                    val body = "{\"model\":\"default\",\"messages\":[{\"role\":\"user\",\"content\":\"Ping from Ngrok Forwarder\"}],\"stream\":false}"
                     val req = "POST /v1/chat/completions HTTP/1.1\r\n" +
                             "Host: $host:$port\r\n" +
                             "User-Agent: NgrokForwarder-NativeJNI/1.0\r\n" +
