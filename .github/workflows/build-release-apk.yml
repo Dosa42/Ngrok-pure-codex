@@ -1,4 +1,4 @@
-name: Build Release APK
+name: Build Release and Debug APKs
 
 on:
   push:
@@ -9,11 +9,12 @@ on:
   workflow_dispatch:
     inputs:
       build_type:
-        description: 'Build variant'
+        description: 'Build variant (both, release, or debug)'
         required: true
-        default: 'release'
+        default: 'both'
         type: choice
         options:
+          - both
           - release
           - debug
 
@@ -37,43 +38,44 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Setup Android SDK, NDK and CMake
+      - name: Setup Android SDK Licenses and Auto-Download
         run: |
+          set -x
           ANDROID_SDK_PATH="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           echo "ANDROID_HOME=$ANDROID_SDK_PATH" >> $GITHUB_ENV
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_PATH" >> $GITHUB_ENV
 
           # Ensure runner user has write permissions for licenses and components
-          sudo chown -R $(whoami) "$ANDROID_SDK_PATH" 2>/dev/null || true
+          sudo chown -R "$(whoami)" "$ANDROID_SDK_PATH" 2>/dev/null || true
           mkdir -p "$ANDROID_SDK_PATH/licenses" 2>/dev/null || sudo mkdir -p "$ANDROID_SDK_PATH/licenses"
 
-          # Pre-seed Android SDK license agreements so builds never fail on licenses
-          echo -e "8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > "$ANDROID_SDK_PATH/licenses/android-sdk-license" 2>/dev/null || true
-          echo -e "84831b9409646a918e30573bab4c9c91346d8abd" > "$ANDROID_SDK_PATH/licenses/android-sdk-preview-license" 2>/dev/null || true
-          echo -e "601085b94cd77f0b54ff86406957099fed792631\n113668f445e453805e45261dd824f10791442620\ne6b7c2ab7ff22c87c008dddc40c810fb4c94bd57" > "$ANDROID_SDK_PATH/licenses/android-googletv-license" 2>/dev/null || true
+          # Pre-seed Android SDK and NDK license agreements
+          cat << 'EOF' | sudo tee "$ANDROID_SDK_PATH/licenses/android-sdk-license" > /dev/null
+8933bad161af4178b1185d1a37fbf41ea5269c55
+d56f5187479451eabf01fb78af6dfcb131a6481e
+24333f8a63b6825ea9c5514f83c2829b004d1fee
+EOF
 
-          # Find sdkmanager
-          if [ -x "$ANDROID_SDK_PATH/cmdline-tools/latest/bin/sdkmanager" ]; then
-            SDKM="$ANDROID_SDK_PATH/cmdline-tools/latest/bin/sdkmanager"
-          elif command -v sdkmanager >/dev/null 2>&1; then
-            SDKM="sdkmanager"
-          else
-            SDKM=$(find "$ANDROID_SDK_PATH" -name sdkmanager -type f 2>/dev/null | head -n 1)
-          fi
+          cat << 'EOF' | sudo tee "$ANDROID_SDK_PATH/licenses/android-sdk-preview-license" > /dev/null
+84831b9409646a918e30573bab4c9c91346d8abd
+EOF
 
-          if [ -n "$SDKM" ] && [ -x "$SDKM" ]; then
-            echo "Using sdkmanager: $SDKM"
-            yes | "$SDKM" --licenses 2>/dev/null || true
-            echo "Installing CMake 3.22.1 and NDK 27.2.12479018 if not present..."
-            "$SDKM" "cmake;3.22.1" "ndk;27.2.12479018" 2>/dev/null || true
-          else
-            echo "sdkmanager not found directly, relying on Gradle auto-download"
-          fi
+          cat << 'EOF' | sudo tee "$ANDROID_SDK_PATH/licenses/android-googletv-license" > /dev/null
+601085b94cd77f0b54ff86406957099fed792631
+113668f445e453805e45261dd824f10791442620
+e6b7c2ab7ff22c87c008dddc40c810fb4c94bd57
+EOF
 
-          if [ -d "$ANDROID_SDK_PATH/ndk/27.2.12479018" ]; then
-            echo "ANDROID_NDK_HOME=$ANDROID_SDK_PATH/ndk/27.2.12479018" >> $GITHUB_ENV
-            echo "ANDROID_NDK_ROOT=$ANDROID_SDK_PATH/ndk/27.2.12479018" >> $GITHUB_ENV
-          fi
+          cat << 'EOF' | sudo tee "$ANDROID_SDK_PATH/licenses/android-sdk-arm-dbt-license" > /dev/null
+859f317696f67ef3d7f30a50a5560e7834b43903
+EOF
+
+          cat << 'EOF' | sudo tee "$ANDROID_SDK_PATH/licenses/mips-android-sysimage-license" > /dev/null
+e9acab5b5fbb560a72cfa4e233b49ab87f2a6678
+EOF
+
+          sudo chmod -R 777 "$ANDROID_SDK_PATH/licenses" 2>/dev/null || true
+          echo "Android licenses successfully pre-seeded. Gradle auto-download will manage dependencies."
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -82,6 +84,7 @@ jobs:
 
       - name: Prepare Environment File
         run: |
+          set -x
           if [ ! -f .env ]; then
             if [ -f .env.example ]; then
               cp .env.example .env
@@ -92,100 +95,139 @@ jobs:
 
       - name: Verify Samsung DeX MultiWindow SDK
         run: |
+          set -x
           mkdir -p app/libs
           if [ ! -f app/libs/samsung-dex-sdk.jar ]; then
-            echo "Bootstrapping Samsung DeX SDK library..."
-            mkdir -p /tmp/samsung_sdk/com/samsung/android/sdk/multiwindow /tmp/samsung_sdk/com/samsung/android/sdk/dex /tmp/samsung_sdk/android/content/res
+            echo "Generating self-contained Samsung DeX MultiWindow SDK fallback..."
+            rm -rf /tmp/samsung_sdk
+            mkdir -p /tmp/samsung_sdk/com/samsung/android/sdk/multiwindow \
+                     /tmp/samsung_sdk/com/samsung/android/sdk/dex \
+                     /tmp/samsung_sdk/android/content/res
+
             cat << 'EOF' > /tmp/samsung_sdk/android/content/Context.java
-            package android.content;
-            public class Context {}
-            EOF
+package android.content;
+public class Context {}
+EOF
+
             cat << 'EOF' > /tmp/samsung_sdk/android/content/res/Configuration.java
-            package android.content.res;
-            public class Configuration {}
-            EOF
+package android.content.res;
+public class Configuration {}
+EOF
+
             cat << 'EOF' > /tmp/samsung_sdk/com/samsung/android/sdk/multiwindow/SMultiWindow.java
-            package com.samsung.android.sdk.multiwindow;
-            import android.content.Context;
-            public class SMultiWindow {
-                public static final int FREEFORM = 1;
-                public static final int SPLIT = 2;
-                public void initialize(Context c) {}
-                public boolean isFeatureEnabled(int f) { return true; }
-            }
-            EOF
+package com.samsung.android.sdk.multiwindow;
+import android.content.Context;
+public class SMultiWindow {
+    public static final int FREEFORM = 1;
+    public static final int SPLIT = 2;
+    public void initialize(Context c) {}
+    public boolean isFeatureEnabled(int f) { return true; }
+}
+EOF
+
             cat << 'EOF' > /tmp/samsung_sdk/com/samsung/android/sdk/dex/DexManager.java
-            package com.samsung.android.sdk.dex;
-            import android.content.res.Configuration;
-            public class DexManager {
-                public static boolean isDexMode(Configuration c) { return false; }
-            }
-            EOF
+package com.samsung.android.sdk.dex;
+import android.content.res.Configuration;
+public class DexManager {
+    public static boolean isDexMode(Configuration c) { return false; }
+}
+EOF
+
             javac -source 11 -target 11 \
               /tmp/samsung_sdk/android/content/Context.java \
               /tmp/samsung_sdk/android/content/res/Configuration.java \
               /tmp/samsung_sdk/com/samsung/android/sdk/multiwindow/SMultiWindow.java \
               /tmp/samsung_sdk/com/samsung/android/sdk/dex/DexManager.java
+
             jar cf app/libs/samsung-dex-sdk.jar -C /tmp/samsung_sdk com
+            rm -rf /tmp/samsung_sdk
           fi
           ls -la app/libs/
 
-      - name: Generate Self-Contained Release Keystore
+      - name: Generate Build Keystores
         run: |
-          echo "Generating self-contained CI release keystore..."
-          keytool -genkey -v \
-            -keystore "${{ github.workspace }}/my-upload-key.jks" \
-            -alias upload \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -storepass android \
-            -keypass android \
-            -dname "CN=CI, OU=Build, O=AIStudio, L=Cloud, S=Global, C=US"
-          ls -la "${{ github.workspace }}/my-upload-key.jks"
+          set -x
+          echo "Setting up signing keystores for CI..."
+          # Setup release keystore
+          if [ ! -f "${{ github.workspace }}/my-upload-key.jks" ]; then
+            keytool -genkey -v \
+              -keystore "${{ github.workspace }}/my-upload-key.jks" \
+              -alias upload \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -storepass android \
+              -keypass android \
+              -dname "CN=CI, OU=Build, O=AIStudio, L=Cloud, S=Global, C=US"
+          fi
+
+          # Setup debug keystore required by debugConfig
+          if [ ! -f "${{ github.workspace }}/debug.keystore" ]; then
+            keytool -genkey -v \
+              -keystore "${{ github.workspace }}/debug.keystore" \
+              -alias androiddebugkey \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -storepass android \
+              -keypass android \
+              -dname "CN=Android Debug, O=Android, C=US"
+          fi
+
           echo "KEYSTORE_PATH=${{ github.workspace }}/my-upload-key.jks" >> $GITHUB_ENV
           echo "STORE_PASSWORD=android" >> $GITHUB_ENV
           echo "KEY_PASSWORD=android" >> $GITHUB_ENV
 
-      - name: Build APK
+      - name: Build APKs
         env:
           KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
           STORE_PASSWORD: android
           KEY_PASSWORD: android
         run: |
+          set -x
           chmod +x gradlew
-          BUILD_TYPE="${{ inputs.build_type || 'release' }}"
+          BUILD_TYPE="${{ inputs.build_type || 'both' }}"
+          echo "Executing Gradle build for mode: $BUILD_TYPE"
           if [ "$BUILD_TYPE" = "debug" ]; then
             ./gradlew :app:assembleDebug --no-daemon --stacktrace
-          else
+          elif [ "$BUILD_TYPE" = "release" ]; then
             ./gradlew :app:assembleRelease --no-daemon --stacktrace
+          else
+            ./gradlew :app:assembleDebug :app:assembleRelease --no-daemon --stacktrace
           fi
 
-      - name: Locate and Package APK
-        id: locate_apk
+      - name: Locate and Package APKs
+        id: package_apks
         run: |
-          APK_PATH=$(find app/build/outputs/apk -name "*.apk" | head -n 1)
-          if [ -z "$APK_PATH" ]; then
-            echo "Error: No APK found!"
-            exit 1
-          fi
-          echo "Found APK: $APK_PATH"
-          DEST_APK="app/build/outputs/apk/ngrok-forwarder-release.apk"
-          cp "$APK_PATH" "$DEST_APK"
-          echo "apk_path=$DEST_APK" >> $GITHUB_OUTPUT
+          set -x
+          mkdir -p app/build/outputs/apk/packaged
 
-      - name: Upload Release APK Artifact
+          DEBUG_APK=$(find app/build/outputs/apk/debug -name "*.apk" 2>/dev/null | head -n 1)
+          if [ -n "$DEBUG_APK" ]; then
+            cp "$DEBUG_APK" app/build/outputs/apk/packaged/ngrok-forwarder-debug.apk
+            echo "Debug APK packaged: app/build/outputs/apk/packaged/ngrok-forwarder-debug.apk"
+          fi
+
+          RELEASE_APK=$(find app/build/outputs/apk/release -name "*.apk" 2>/dev/null | head -n 1)
+          if [ -n "$RELEASE_APK" ]; then
+            cp "$RELEASE_APK" app/build/outputs/apk/packaged/ngrok-forwarder-release.apk
+            echo "Release APK packaged: app/build/outputs/apk/packaged/ngrok-forwarder-release.apk"
+          fi
+
+          ls -la app/build/outputs/apk/packaged/
+
+      - name: Upload APK Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ngrok-forwarder-release-apk
-          path: ${{ steps.locate_apk.outputs.apk_path }}
+          name: ngrok-forwarder-apks
+          path: app/build/outputs/apk/packaged/*.apk
           retention-days: 30
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.locate_apk.outputs.apk_path }}
+          files: app/build/outputs/apk/packaged/*.apk
           generate_release_notes: true
           draft: false
           prerelease: false

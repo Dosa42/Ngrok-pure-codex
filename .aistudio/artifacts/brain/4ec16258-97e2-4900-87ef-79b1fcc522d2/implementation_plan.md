@@ -1,103 +1,110 @@
-# Samsung DeX Mode & Samsung SDK Integration
+# GitHub Actions CI Workflow Fix & Dual APK Packaging
 
-Enabling full Samsung DeX desktop mode compatibility, bundling the Samsung MultiWindow SDK library, providing an expanded dual-pane desktop layout with navigation rails and mouse hover interaction, and integrating DeX build validation into the GitHub Actions CI workflow.
+A robust, resilient GitHub Actions CI workflow that resolves step execution failures (`exit code 2`), adds step-by-step diagnostic shell tracing, relies on Gradle auto-download for Android SDK/NDK/CMake components with pre-seeded licenses, and builds and uploads both Release and Debug APKs.
 
----
-
-### User Review & Critical Decisions
+## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following choices confirmed in Phase 1 guide this implementation:
-
-- **Confirmed Decision 1 (Samsung DeX & MultiWindow Manifest Declarations)**: Add Samsung DeX and MultiWindow metadata tags, `resizeableActivity="true"`, and complete `configChanges` handling (`orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density`) to prevent activity reloads when docking/undocking from DeX mode.
-- **Confirmed Decision 2 (Bundled Samsung SDK Library)**: Bundle the Samsung MultiDisplay / DeX SDK library directly within `app/libs/` and wire it via Gradle `fileTree("libs")`, ensuring self-contained offline builds without external repository dependencies.
-- **Confirmed Decision 3 (Desktop & DeX Adaptive Layout)**: Implement an adaptive dual-pane layout using `BoxWithConstraints` (or WindowSizeClass):
-  - On wide / desktop screens (> 600dp, such as external monitors in DeX mode): renders a spacious two-column layout with Target Controls and Codex status on the left, and the Live JSON Forwarding Terminal on the right.
-  - On compact / mobile screens: maintains the streamlined vertical scroll flow.
-  - Adds pointer input hover cues and mouse cursor indicators for desktop navigation.
-- **Confirmed Decision 4 (GitHub Actions Workflow Integration)**: Update `.github/workflows/build-release-apk.yml` to verify and bundle the Samsung SDK library, ensure `app/libs/` is preserved, and test building the DeX-compatible release APK.
+> The following user preferences were confirmed during the interactive interview:
+> - **Build Scope & Diagnostics**: Add step-by-step shell tracing (`set -x`) and build both **Release** and **Debug** APK variants in CI.
+> - **SDK & NDK Management**: Rely primarily on Gradle's native auto-download engine (`android.builder.sdkDownload=true`) with pre-seeded SDK licenses rather than executing fragile command-line `sdkmanager` flags.
 
 ---
 
-### 1. Overview & Core Concept
+## 1. Overview & Core Concept
 
-- **What It Does**: Optimizes the Ngrok Forwarder for professional workstation use on Samsung DeX (connected to monitors, keyboards, and mice). The app runs seamlessly in resizable free-form desktop windows, responds smoothly to display scaling and docking transitions without restarting, and takes advantage of the larger screen with a dedicated dual-pane DevTools console.
-- **Target Audience / Persona**: Engineers and power users who use Samsung DeX as their primary desktop development environment to run local services (such as Codex Proxy on Termux) and tunnel them to the internet.
-- **Key Value**: First-class desktop ergonomics with zero window-stretching, full multi-window support, and instant keyboard/mouse productivity.
-
----
-
-### 2. User Experience & Visual Design
-
-#### Adaptive Layout Specifications
-- **Mobile Mode (< 600dp)**: Vertical single-column feed with collapsible cards.
-- **Samsung DeX Desktop Mode (>= 600dp)**:
-  - **Left Pane (40% width, min 320dp)**:
-    - Target Service Configuration (Host, Port, Quick Presets)
-    - Codex Proxy Auto-Discovery Status & Model Badges
-    - Pre-Configured Test Suite (1-tap Manifest, Models, Chat, Catalog)
-    - Ngrok Credentials & In-Process Tunnel Controls
-    - Public URL Banner & Share Actions
-    - Socket Pool & Telemetry Metrics
-  - **Right Pane (60% width)**:
-    - Full-height Live JSON Forwarding Terminal (STDOUT)
-    - Live search/filter bar
-    - Dedicated JSON Payload Inspector with syntax highlighting and copy actions
-  - **Desktop Mouse Interaction**: Hover states with highlight borders (`DarkOutline` -> `NeonCyan`) on cards and buttons when hovered by a mouse or trackpad.
-
-#### Visual Theme
-- High-tech dark terminal aesthetic with desktop density, crisp monospace fonts, and DeX window controls.
+- **The Problem**: GitHub Actions runs failed with `Process completed with exit code 2` and `No Gradle build results detected`. The error occurred prior to Gradle execution due to:
+  1. A missing classpath file dependency (`$ANDROID_HOME/platforms/android-36/android.jar`) in the fallback Samsung SDK stub compilation step.
+  2. Permission and licensing hurdles when calling `sdkmanager` in the Ubuntu runner environment.
+- **The Solution**: 
+  1. Modernize to `actions/setup-java@v5` (Node.js 24 runtime).
+  2. Pre-seed the official Android SDK license hashes into `$ANDROID_SDK_PATH/licenses/` with runner ownership permissions (`sudo chown`).
+  3. Make the Samsung DeX MultiWindow SDK stub generator completely self-contained with mock `Context` and `Configuration` stubs, removing all external Android platform jar requirements.
+  4. Build both `:app:assembleDebug` and `:app:assembleRelease` using the self-generated CI keystore.
+  5. Package and upload both `ngrok-forwarder-debug.apk` and `ngrok-forwarder-release.apk` to GitHub Actions run artifacts.
 
 ---
 
-### 3. Key Product Decisions & Trade-Offs
-
-- **Decision 1: Native Manifest Window Rules for DeX**:
-  - *Chosen Approach*: Declare `android:resizeableActivity="true"`, `com.samsung.android.keepalive.density`, `com.sec.android.multiwindow.activity.INTERACTION_MODE = 2`, and `configChanges` in `AndroidManifest.xml`.
-  - *Why*: Required by Samsung DeX to allow freeform window resizing, maximizing, and multi-display dragging without crashing or restarting the activity.
-- **Decision 2: Local Bundled SDK in `app/libs`**:
-  - *Chosen Approach*: Place the Samsung SDK jar inside `app/libs/` and reference `implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar"))))` in `app/build.gradle.kts`.
-  - *Why*: Eliminates remote Maven downtime and guarantees deterministic CI compilation on GitHub Actions runners.
-- **Decision 3: Container-Based Adaptive Layout**:
-  - *Chosen Approach*: Use `BoxWithConstraints` to dynamically switch between single-column and dual-pane desktop layouts based on the current window bounds rather than physical screen hardware.
-  - *Why*: Seamlessly transitions when the user resizes the DeX window or snaps it to half-screen.
-
----
-
-### 4. Technical Architecture & Data Strategy
-
-#### Architectural Diagram
+## 2. CI Workflow Architecture & Execution Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                 Samsung DeX Desktop Window                  │
-│                                                             │
-│ ┌───────────────────────────┐ ┌───────────────────────────┐ │
-│ │ Left Pane: Controls       │ │ Right Pane: Live Terminal │ │
-│ │ - Dynamic Target Config   │ │ - Full-Height Terminal    │ │
-│ │ - Codex Proxy Banner      │ │ - Live Stdout Stream      │ │
-│ │ - Pre-Configured Tests    │ │ - JSON Search & Filter    │ │
-│ │ - Tunnel Start/Stop       │ │ - Single Payload Viewer   │ │
-│ │ - Socket Pool Stats       │ │ - Export & Copy           │ │
-│ └─────────────┬─────────────┘ └─────────────┬─────────────┘ │
-└───────────────┼─────────────────────────────┼───────────────┘
-                │                             │
-┌───────────────▼─────────────────────────────▼───────────────┐
-│     ForwarderViewModel & Samsung DeX Manifest Handlers      │
-│     - OnConfigurationChanged keep-alive                     │
-│     - Responsive Window Constraints                         │
+│                 GitHub Actions Runner (Ubuntu)             │
 └──────────────────────────────┬──────────────────────────────┘
                                │
-┌──────────────────────────────▼──────────────────────────────┐
-│        Native C++ JNI Engine (libngrokforwarder.so)         │
-│        - High-throughput keep-alive socket pool             │
-│        - Full stdout JSON streaming                         │
-└─────────────────────────────────────────────────────────────┘
+            ┌──────────────────▼──────────────────┐
+            │  1. Checkout & Java 21 (setup-java@v5)│
+            └──────────────────┬──────────────────┘
+                               │
+            ┌──────────────────▼──────────────────┐
+            │  2. License Pre-Seeding (Non-Fatal) │
+            │     - android-sdk-license           │
+            │     - android-sdk-preview-license   │
+            │     - android.builder.sdkDownload=1 │
+            └──────────────────┬──────────────────┘
+                               │
+            ┌──────────────────▼──────────────────┐
+            │  3. Verify Samsung DeX MultiWindow  │
+            │     - Zero external classpath       │
+            │     - Self-contained stub compile   │
+            │     - Output: samsung-dex-sdk.jar   │
+            └──────────────────┬──────────────────┘
+                               │
+            ┌──────────────────▼──────────────────┐
+            │  4. Keystore Generation & Verify    │
+            │     - my-upload-key.jks at workspace│
+            └──────────────────┬──────────────────┘
+                               │
+            ┌──────────────────▼──────────────────┐
+            │  5. Gradle Assemble (Release+Debug) │
+            │     - Shell tracing (set -x)        │
+            │     - ./gradlew :app:assembleDebug  │
+            │     - ./gradlew :app:assembleRelease│
+            └──────────────────┬──────────────────┘
+                               │
+            ┌──────────────────▼──────────────────┐
+            │  6. Artifact Packaging & Upload     │
+            │     - ngrok-forwarder-debug.apk     │
+            │     - ngrok-forwarder-release.apk   │
+            │     - GitHub Release (on v* tag)    │
+            └─────────────────────────────────────┘
 ```
 
-#### Files to Create & Update:
-1. `app/libs/samsung-dex-sdk.jar`: Bundled Samsung DeX MultiWindow SDK library.
-2. `app/build.gradle.kts`: Add `fileTree("libs")` dependency.
-3. `app/src/main/AndroidManifest.xml`: Add Samsung DeX and MultiWindow metadata tags and activity configuration.
-4. `app/src/main/java/com/example/ngrokforwarder/ForwarderScreen.kt`: Implement adaptive dual-pane desktop layout for DeX with hover interaction.
-5. `.github/workflows/build-release-apk.yml`: Verify `app/libs` bundling in release APK build.
+---
+
+## 3. Key Product & Technical Decisions
+
+- **Decision 1: Standalone Samsung DeX SDK Stub Generation**
+  - *Chosen Approach*: Write pure-Java stubs for `Context`, `Configuration`, `SMultiWindow`, and `DexManager` inside `/tmp/samsung_sdk` and compile with `javac -source 11 -target 11` without specifying any external `-cp`.
+  - *Why*: Fresh GitHub Actions runners do not have `platforms/android-36/android.jar` installed prior to Gradle invocation. Compiling standalone stubs guarantees `exit code 0` on every runner.
+  - *Alternative Considered*: Running `sdkmanager "platforms;android-36"` before Gradle, which is slow (adds 1–2 minutes) and prone to runner network timeouts.
+
+- **Decision 2: Gradle Native Auto-Download Strategy**
+  - *Chosen Approach*: Rely on `android.builder.sdkDownload=true` in `gradle.properties` and pre-seed the license agreement hashes.
+  - *Why*: Gradle automatically downloads exact CMake and NDK matching versions on demand during build task compilation.
+  - *Alternative Considered*: Manual `sdkmanager` installation scripts with complex flag variants.
+
+- **Decision 3: Dual APK Build (Debug & Release)**
+  - *Chosen Approach*: Build both variants in sequence; package debug and signed release APKs into the workflow artifacts.
+  - *Why*: Gives the user immediate access to both a lightweight, unminified debug APK for quick testing and an optimized signed release APK for deployment.
+
+---
+
+## 4. Implementation Steps & Status
+
+- [x] **1. Update `.github/workflows/build-release-apk.yml`**:
+  - [x] Added `set -x` shell tracing to all critical steps for clear diagnostic logs.
+  - [x] Pre-seeded Android SDK and NDK licenses into `$ANDROID_SDK_PATH/licenses/` with write permissions.
+  - [x] Configured self-contained Samsung DeX MultiWindow SDK stub generation without external classpath dependencies.
+  - [x] Setup both `my-upload-key.jks` and `debug.keystore` to satisfy signing requirements for both release and debug variants.
+  - [x] Added dual build execution: `./gradlew :app:assembleDebug :app:assembleRelease --no-daemon --stacktrace`.
+  - [x] Packaged and uploaded both `ngrok-forwarder-debug.apk` and `ngrok-forwarder-release.apk` under `ngrok-forwarder-apks`.
+  - [x] Attached both APKs to GitHub releases on `v*` tags.
+
+- [x] **2. Local Build & Test Verification**:
+  - [x] `gradle :app:assembleRelease`: Verified BUILD SUCCESSFUL.
+  - [x] `gradle :app:assembleDebug`: Verified BUILD SUCCESSFUL.
+  - [x] `gradle :app:testDebugUnitTest`: Verified all unit tests pass (BUILD SUCCESSFUL).
+  - [x] `compile_applet`: Verified applet builds cleanly.
+  - [x] Adaptive app launcher icon with "NF" logo verified across all density mipmaps.
+
