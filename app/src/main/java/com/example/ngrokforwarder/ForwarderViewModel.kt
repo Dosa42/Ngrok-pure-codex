@@ -221,6 +221,7 @@ class ForwarderViewModel(application: Application) : AndroidViewModel(applicatio
         val (rawStdout, jsonLogs) = repository.getStdoutJsonLogs(50)
         val publicUrl = if (currentTunnelStatus == TunnelStatus.ONLINE) repository.getPublicUrl() else null
 
+        val err = repository.getLastError()
         _uiState.update {
             it.copy(
                 tunnelStatus = if (it.tunnelStatus == TunnelStatus.CONNECTING && currentTunnelStatus == TunnelStatus.STOPPED) {
@@ -228,7 +229,8 @@ class ForwarderViewModel(application: Application) : AndroidViewModel(applicatio
                 } else {
                     currentTunnelStatus
                 },
-                publicUrl = publicUrl ?: it.publicUrl,
+                publicUrl = if (currentTunnelStatus == TunnelStatus.ONLINE) (publicUrl ?: it.publicUrl) else null,
+                errorMessage = if (currentTunnelStatus == TunnelStatus.ERROR) (err.ifBlank { it.errorMessage }) else it.errorMessage,
                 metrics = metrics,
                 poolMetrics = poolMetrics,
                 rawStdoutString = rawStdout,

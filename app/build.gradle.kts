@@ -141,6 +141,7 @@ dependencies {
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
   implementation("com.ngrok:ngrok-java:1.1.1")
+  implementation("com.ngrok:ngrok-java-native:1.1.1:linux-android-aarch_64")
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)

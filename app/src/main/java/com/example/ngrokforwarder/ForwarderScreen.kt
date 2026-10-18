@@ -117,8 +117,8 @@ fun ForwarderScreen(
     val context = LocalContext.current
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
-        // Enforce desktop layout unconditionally across all window sizes, rotations, and resizing
-        val isDesktopDeX = true
+        // Adaptive layout: dual-pane on wide screens / DeX desktop, vertical single-column on phones
+        val isDesktopDeX = maxWidth >= 750.dp || state.dexState.isSamsungDesktopMode
 
         Scaffold(
             modifier = Modifier.fillMaxSize(),

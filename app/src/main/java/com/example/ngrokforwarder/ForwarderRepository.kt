@@ -56,7 +56,12 @@ class ForwarderRepository(context: Context) {
 
     fun getSavedDevUrl(): String {
         val stored = prefs.getString("dev_url", "") ?: ""
-        return if (stored.isNotBlank()) stored else getEmbeddedDevUrl()
+        if (stored.isBlank() || stored.contains("ngrok-free.app") || stored.contains("3JkrVT") || stored.contains("ais-dev-t7ylyxqor5zeetjs5fxfv3")) {
+            val envUrl = getEmbeddedDevUrl()
+            saveDevUrl(envUrl)
+            return envUrl
+        }
+        return stored
     }
 
     fun saveDevUrl(url: String) {
@@ -141,23 +146,32 @@ class ForwarderRepository(context: Context) {
 
             // Authentically invoke the ngrok Java SDK
             val sdkResult = NgrokSdkTunnel.connect(token, devUrl, port)
-            sdkResult.onSuccess { activeSdkUrl ->
+            if (sdkResult.isSuccess) {
+                val activeSdkUrl = sdkResult.getOrThrow()
                 bridge.nativeSetPublicUrl(activeSdkUrl)
                 saveDevUrl(activeSdkUrl)
-            }.onFailure { sdkError ->
-                sdkErrorDetail = "${sdkError::class.java.simpleName}: ${sdkError.message}"
-                android.util.Log.e("NgrokForwarder", "ngrok Java SDK error: ${sdkError.message}", sdkError)
+                bridge.nativeStart(host, port, token, activeSdkUrl)
+                true
+            } else {
+                val sdkError = sdkResult.exceptionOrNull()!!
+                val fullErrMsg = "${sdkError::class.java.simpleName}: ${sdkError.message ?: sdkError.cause?.message ?: "Ngrok native library connection error"}"
+                sdkErrorDetail = fullErrMsg
+                android.util.Log.e("NgrokForwarder", "ngrok Java SDK error: $fullErrMsg", sdkError)
+                bridge.nativeStop()
+                false
             }
-
-            bridge.nativeStart(host, port, token, devUrl)
         }
 
     suspend fun stopTunnel(): Unit = withContext(Dispatchers.IO) {
+        sdkErrorDetail = null
         NgrokSdkTunnel.disconnect()
         bridge.nativeStop()
     }
 
     fun getTunnelStatus(): TunnelStatus {
+        if (!sdkErrorDetail.isNullOrBlank()) {
+            return TunnelStatus.ERROR
+        }
         return when (bridge.nativeGetStatus()) {
             1 -> TunnelStatus.CONNECTING
             2 -> TunnelStatus.ONLINE
