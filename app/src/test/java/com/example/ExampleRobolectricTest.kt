@@ -17,6 +17,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
+import com.example.ngrokforwarder.SamsungDexManager
+import android.content.res.Configuration
+
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class ExampleRobolectricTest {
@@ -38,6 +41,7 @@ class ExampleRobolectricTest {
         assertEquals(PortStatus.CHECKING, defaultState.portStatus)
         assertEquals(0L, defaultState.poolMetrics.poolHits)
         assertEquals(false, defaultState.codexInfo.isDetected)
+        assertEquals(false, defaultState.dexState.isDexActive)
     }
 
     @Test
@@ -75,5 +79,28 @@ class ExampleRobolectricTest {
         assertEquals("/v1/chat/completions", entry.path)
         assertEquals("OPENAI_CHAT", entry.protocol)
         assertTrue(entry.pooled)
+    }
+
+    @Test
+    fun `verify SamsungDexManager initialization and default state`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        SamsungDexManager.initialize(context)
+        val state = SamsungDexManager.updateState(context)
+        assertNotNull(state)
+        assertNotNull(state.modeDescription)
+        assertNotNull(SamsungDexManager.dexState.value)
+    }
+
+    @Test
+    fun `verify SamsungDexManager detection with desktop mode configuration`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val config = Configuration(context.resources.configuration).apply {
+            uiMode = (uiMode and Configuration.UI_MODE_TYPE_MASK.inv()) or Configuration.UI_MODE_TYPE_DESK
+        }
+        val desktopContext = context.createConfigurationContext(config)
+        val state = SamsungDexManager.updateState(desktopContext)
+        assertTrue(state.isDexActive)
+        assertTrue(state.isDesktopUiMode)
+        assertEquals("Desktop Mode (UI_MODE_TYPE_DESK)", state.modeDescription)
     }
 }

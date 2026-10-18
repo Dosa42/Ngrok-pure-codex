@@ -92,52 +92,6 @@ jobs:
             fi
           fi
 
-      - name: Verify Samsung DeX MultiWindow SDK
-        run: |
-          set -x
-          mkdir -p app/libs
-          if [ ! -f app/libs/samsung-dex-sdk.jar ]; then
-            echo "Generating self-contained Samsung DeX MultiWindow SDK fallback..."
-            rm -rf /tmp/samsung_sdk
-            mkdir -p /tmp/samsung_sdk/com/samsung/android/sdk/multiwindow \
-                     /tmp/samsung_sdk/com/samsung/android/sdk/dex \
-                     /tmp/samsung_sdk/android/content/res
-
-            printf '%s\n' \
-              'package android.content;' \
-              'public class Context {}' > /tmp/samsung_sdk/android/content/Context.java
-
-            printf '%s\n' \
-              'package android.content.res;' \
-              'public class Configuration {}' > /tmp/samsung_sdk/android/content/res/Configuration.java
-
-            printf '%s\n' \
-              'package com.samsung.android.sdk.multiwindow;' \
-              'import android.content.Context;' \
-              'public class SMultiWindow {' \
-              '    public static final int FREEFORM = 1;' \
-              '    public static final int SPLIT = 2;' \
-              '    public void initialize(Context c) {}' \
-              '    public boolean isFeatureEnabled(int f) { return true; }' \
-              '}' > /tmp/samsung_sdk/com/samsung/android/sdk/multiwindow/SMultiWindow.java
-
-            printf '%s\n' \
-              'package com.samsung.android.sdk.dex;' \
-              'import android.content.res.Configuration;' \
-              'public class DexManager {' \
-              '    public static boolean isDexMode(Configuration c) { return false; }' \
-              '}' > /tmp/samsung_sdk/com/samsung/android/sdk/dex/DexManager.java
-
-            javac -source 11 -target 11 \
-              /tmp/samsung_sdk/android/content/Context.java \
-              /tmp/samsung_sdk/android/content/res/Configuration.java \
-              /tmp/samsung_sdk/com/samsung/android/sdk/multiwindow/SMultiWindow.java \
-              /tmp/samsung_sdk/com/samsung/android/sdk/dex/DexManager.java
-
-            jar cf app/libs/samsung-dex-sdk.jar -C /tmp/samsung_sdk com
-            rm -rf /tmp/samsung_sdk
-          fi
-          ls -la app/libs/
 
       - name: Generate Build Keystores
         run: |

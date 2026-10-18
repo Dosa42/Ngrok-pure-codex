@@ -114,7 +114,7 @@ fun ForwarderScreen(
     val context = LocalContext.current
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
-        val isDesktopDeX = maxWidth >= 600.dp
+        val isDesktopDeX = state.dexState.isDexActive || maxWidth >= 600.dp
 
         Scaffold(
             modifier = Modifier.fillMaxSize(),
@@ -151,7 +151,7 @@ fun ForwarderScreen(
                                             modifier = Modifier.size(12.dp)
                                         )
                                         Text(
-                                            text = "DeX Desktop",
+                                            text = if (state.dexState.isSamsungDesktopMode) "Samsung DeX" else if (state.dexState.isDesktopUiMode) "Desktop Mode" else "DeX Desktop",
                                             fontSize = 9.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = Color(0xFFC7D2FE)

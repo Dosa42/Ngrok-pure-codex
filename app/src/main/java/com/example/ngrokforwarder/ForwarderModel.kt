@@ -78,5 +78,6 @@ data class ForwarderUiState(
     val isSendingTestPing: Boolean = false,
     val testPingResult: String? = null,
     val testPingTitle: String = "Test Response",
-    val jsonSearchQuery: String = ""
+    val jsonSearchQuery: String = "",
+    val dexState: DexState = DexState()
 )

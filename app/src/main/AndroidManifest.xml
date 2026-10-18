@@ -21,6 +21,8 @@
         <meta-data android:name="com.samsung.android.multidisplay.keep_process_alive" android:value="true" />
         <meta-data android:name="com.samsung.android.sdk.multiwindow.enable" android:value="true" />
         <meta-data android:name="com.sec.android.support.multiwindow" android:value="true" />
+        <meta-data android:name="supports_dex_dual_mode" android:value="true" />
+        <meta-data android:name="android.max_aspect" android:value="2.1" />
 
         <activity
             android:name=".MainActivity"

@@ -56,6 +56,13 @@ class ForwarderViewModel(application: Application) : AndroidViewModel(applicatio
                 delay(4000)
             }
         }
+
+        // Real Samsung DeX & Desktop mode observation
+        viewModelScope.launch {
+            SamsungDexManager.dexState.collect { dex ->
+                _uiState.update { it.copy(dexState = dex) }
+            }
+        }
     }
 
     fun onAuthtokenChanged(newToken: String) {
