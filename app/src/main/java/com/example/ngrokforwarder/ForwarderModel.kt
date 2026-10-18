@@ -68,7 +68,7 @@ data class ForwarderUiState(
     val portStatus: PortStatus = PortStatus.CHECKING,
     val portStatusMessage: String = "Probing target service...",
     val codexInfo: CodexProxyInfo = CodexProxyInfo(),
-    val devUrl: String = "https://ais-dev-t7ylyxqor5zeetjs5fxfv3-571187916303.europe-west3.run.app",
+    val devUrl: String = "https://fernlike-profusely-stunner.ngrok-free.dev",
     val isDevUrlEmbedded: Boolean = true,
     val publicUrl: String? = null,
     val errorMessage: String? = null,

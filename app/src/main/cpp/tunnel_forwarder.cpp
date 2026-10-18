@@ -141,7 +141,7 @@ bool TunnelForwarder::start(const std::string& targetHost, int targetPort, const
     if (!devUrl.empty()) {
         m_publicUrl = devUrl;
     } else {
-        m_publicUrl = "https://ais-dev-t7ylyxqor5zeetjs5fxfv3-571187916303.europe-west3.run.app";
+        m_publicUrl = "https://fernlike-profusely-stunner.ngrok-free.dev";
     }
 
     m_state.store(TunnelState::ONLINE);

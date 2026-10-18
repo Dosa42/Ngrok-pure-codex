@@ -910,10 +910,14 @@ fun CredentialsCard(
     authtoken: String,
     isAuthtokenVisible: Boolean,
     isEmbeddedFromEnv: Boolean,
+    devUrl: String,
+    isDevUrlEmbedded: Boolean,
     tunnelStatus: TunnelStatus,
     errorMessage: String?,
     onAuthtokenChanged: (String) -> Unit,
     onToggleVisibility: () -> Unit,
+    onDevUrlChanged: (String) -> Unit,
+    onResetDevUrl: () -> Unit,
     onToggleTunnel: () -> Unit
 ) {
     Card(
@@ -929,7 +933,7 @@ fun CredentialsCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "NGROK CREDENTIALS",
+                    text = "NGROK CREDENTIALS & DOMAIN",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = NeonCyan,
@@ -985,6 +989,42 @@ fun CredentialsCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("authtoken_input"),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = NeonCyan,
+                    unfocusedBorderColor = DarkOutline,
+                    focusedLabelColor = NeonCyan,
+                    unfocusedLabelColor = TextSecondary,
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary,
+                    cursorColor = NeonCyan,
+                    focusedContainerColor = DarkSurfaceVariant,
+                    unfocusedContainerColor = DarkSurfaceVariant
+                ),
+                shape = RoundedCornerShape(10.dp)
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            OutlinedTextField(
+                value = devUrl,
+                onValueChange = onDevUrlChanged,
+                label = { Text("Ngrok Domain / Public URL") },
+                placeholder = { Text("https://fernlike-profusely-stunner.ngrok-free.dev") },
+                singleLine = true,
+                trailingIcon = {
+                    if (!isDevUrlEmbedded) {
+                        IconButton(onClick = onResetDevUrl, modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Reset to default domain",
+                                tint = NeonCyan
+                            )
+                        }
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("dev_url_input"),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = NeonCyan,
                     unfocusedBorderColor = DarkOutline,
@@ -1059,6 +1099,7 @@ fun PublicTunnelUrlCard(
     isSendingPing: Boolean,
     onCopyClicked: () -> Unit,
     onShareClicked: () -> Unit,
+    onOpenBrowserClicked: () -> Unit = {},
     onTestPingClicked: () -> Unit
 ) {
     Card(
@@ -1108,6 +1149,23 @@ fun PublicTunnelUrlCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                OutlinedButton(
+                    onClick = onOpenBrowserClicked,
+                    modifier = Modifier
+                        .weight(1f)
+                        .pointerHoverIcon(PointerIcon.Hand)
+                        .testTag("open_browser_button"),
+                    contentPadding = PaddingValues(vertical = 8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
+                    border = ButtonDefaults.outlinedButtonBorder().copy(
+                        brush = androidx.compose.ui.graphics.SolidColor(DarkOutline)
+                    )
+                ) {
+                    Icon(imageVector = Icons.Default.OpenInNew, contentDescription = "Open", modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Open", fontSize = 12.sp)
+                }
+
                 OutlinedButton(
                     onClick = onCopyClicked,
                     modifier = Modifier
@@ -1161,7 +1219,7 @@ fun PublicTunnelUrlCard(
                         Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = "Ping", modifier = Modifier.size(16.dp))
                     }
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Test AI Chat", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("Test Ping", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

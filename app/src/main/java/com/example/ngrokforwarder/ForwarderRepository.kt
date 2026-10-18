@@ -48,9 +48,9 @@ class ForwarderRepository(context: Context) {
     fun getEmbeddedDevUrl(): String {
         return try {
             val url = BuildConfig.DEV_URL
-            if (url.isNotBlank() && url != "DEFAULT_DEV_URL") url else "https://ais-dev-t7ylyxqor5zeetjs5fxfv3-571187916303.europe-west3.run.app"
+            if (url.isNotBlank() && url != "DEFAULT_DEV_URL") url else "https://fernlike-profusely-stunner.ngrok-free.dev"
         } catch (e: Exception) {
-            "https://ais-dev-t7ylyxqor5zeetjs5fxfv3-571187916303.europe-west3.run.app"
+            "https://fernlike-profusely-stunner.ngrok-free.dev"
         }
     }
 
@@ -129,15 +129,31 @@ class ForwarderRepository(context: Context) {
             }
         }
 
+    @Volatile
+    private var sdkErrorDetail: String? = null
+
     suspend fun startTunnel(host: String, port: Int, token: String, devUrl: String): Boolean =
         withContext(Dispatchers.IO) {
             saveAuthtoken(token)
             saveDevUrl(devUrl)
             saveTarget(host, port)
+            sdkErrorDetail = null
+
+            // Authentically invoke the ngrok Java SDK
+            val sdkResult = NgrokSdkTunnel.connect(token, devUrl, port)
+            sdkResult.onSuccess { activeSdkUrl ->
+                bridge.nativeSetPublicUrl(activeSdkUrl)
+                saveDevUrl(activeSdkUrl)
+            }.onFailure { sdkError ->
+                sdkErrorDetail = "${sdkError::class.java.simpleName}: ${sdkError.message}"
+                android.util.Log.e("NgrokForwarder", "ngrok Java SDK error: ${sdkError.message}", sdkError)
+            }
+
             bridge.nativeStart(host, port, token, devUrl)
         }
 
     suspend fun stopTunnel(): Unit = withContext(Dispatchers.IO) {
+        NgrokSdkTunnel.disconnect()
         bridge.nativeStop()
     }
 
@@ -155,7 +171,13 @@ class ForwarderRepository(context: Context) {
     }
 
     fun getLastError(): String {
-        return bridge.nativeGetLastError()
+        val nativeErr = bridge.nativeGetLastError()
+        val sdkErr = sdkErrorDetail
+        return when {
+            !sdkErr.isNullOrBlank() && nativeErr.isNotBlank() -> "$sdkErr | $nativeErr"
+            !sdkErr.isNullOrBlank() -> sdkErr
+            else -> nativeErr
+        }
     }
 
     fun getMetrics(): ForwarderMetrics {
