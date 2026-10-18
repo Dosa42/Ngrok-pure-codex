@@ -25,6 +25,10 @@ jobs:
   build:
     name: Build & Package APK
     runs-on: ubuntu-latest
+    env:
+      _JAVA_OPTIONS: "-Djava.awt.headless=true"
+      JAVA_TOOL_OPTIONS: "-Djava.awt.headless=true"
+      GRADLE_OPTS: "-Djava.awt.headless=true"
 
     steps:
       - name: Checkout Repository
@@ -174,6 +178,9 @@ jobs:
           KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
           STORE_PASSWORD: android
           KEY_PASSWORD: android
+          _JAVA_OPTIONS: "-Djava.awt.headless=true"
+          JAVA_TOOL_OPTIONS: "-Djava.awt.headless=true"
+          GRADLE_OPTS: "-Djava.awt.headless=true"
         run: |
           set -x
           chmod +x gradlew
