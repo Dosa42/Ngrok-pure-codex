@@ -12,8 +12,37 @@ object NgrokSdkTunnel {
     @Volatile
     private var activeSession: Session? = null
 
+    @Volatile
+    private var nativeLoaded = false
+
+    fun initNative(context: android.content.Context) {
+        if (nativeLoaded) return
+        try {
+            val cacheDir = context.cacheDir
+            System.setProperty("java.io.tmpdir", cacheDir.absolutePath)
+        } catch (t: Throwable) {
+            Log.w(TAG, "Could not set java.io.tmpdir: ${t.message}")
+        }
+
+        try {
+            System.loadLibrary("ngrok_java")
+            nativeLoaded = true
+            Log.i(TAG, "Successfully loaded libngrok_java via System.loadLibrary")
+        } catch (t: Throwable) {
+            Log.e(TAG, "System.loadLibrary(ngrok_java) failed: ${t.message}", t)
+        }
+    }
+
     suspend fun connect(authtoken: String, domain: String, targetPort: Int): Result<String> = withContext(Dispatchers.IO) {
         try {
+            if (!nativeLoaded) {
+                try {
+                    System.loadLibrary("ngrok_java")
+                    nativeLoaded = true
+                } catch (t: Throwable) {
+                    Log.w(TAG, "Late loadLibrary(ngrok_java) attempt: ${t.message}")
+                }
+            }
             Log.i(TAG, "Attempting native Ngrok SDK connection with domain=$domain targetPort=$targetPort")
             val sessionBuilder = if (authtoken.isNotBlank()) {
                 Session.withAuthtoken(authtoken)

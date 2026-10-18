@@ -14,6 +14,10 @@ class ForwarderRepository(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("ngrok_prefs", Context.MODE_PRIVATE)
     private val bridge: NativeTunnelBridge = NativeTunnelBridge()
 
+    init {
+        NgrokSdkTunnel.initNative(context)
+    }
+
     fun getEmbeddedEnvToken(): String {
         return try {
             val token = BuildConfig.NGROK_AUTHTOKEN
