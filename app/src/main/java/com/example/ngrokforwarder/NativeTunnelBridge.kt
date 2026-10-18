@@ -10,7 +10,8 @@ class NativeTunnelBridge {
 
     external fun nativeProbePort(host: String, port: Int): Int
     external fun nativeSetTarget(host: String, port: Int)
-    external fun nativeStart(host: String, port: Int, authtoken: String): Boolean
+    external fun nativeStart(host: String, port: Int, authtoken: String, devUrl: String): Boolean
+    external fun nativeSetPublicUrl(url: String)
     external fun nativeStop()
     external fun nativeGetStatus(): Int
     external fun nativeGetPublicUrl(): String?

@@ -39,18 +39,33 @@ Java_com_example_ngrokforwarder_NativeTunnelBridge_nativeStart(
         jobject /* this */,
         jstring jHost,
         jint jPort,
-        jstring jToken) {
+        jstring jToken,
+        jstring jDevUrl) {
     const char* hostChars = env->GetStringUTFChars(jHost, nullptr);
     const char* tokenChars = env->GetStringUTFChars(jToken, nullptr);
+    const char* devUrlChars = jDevUrl ? env->GetStringUTFChars(jDevUrl, nullptr) : nullptr;
 
     std::string host(hostChars ? hostChars : "127.0.0.1");
     std::string token(tokenChars ? tokenChars : "");
+    std::string devUrl(devUrlChars ? devUrlChars : "https://ais-dev-t7ylyxqor5zeetjs5fxfv3-571187916303.europe-west3.run.app");
 
     if (hostChars) env->ReleaseStringUTFChars(jHost, hostChars);
     if (tokenChars) env->ReleaseStringUTFChars(jToken, tokenChars);
+    if (devUrlChars) env->ReleaseStringUTFChars(jDevUrl, devUrlChars);
 
-    bool res = TunnelForwarder::getInstance().start(host, jPort, token);
+    bool res = TunnelForwarder::getInstance().start(host, jPort, token, devUrl);
     return res ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_com_example_ngrokforwarder_NativeTunnelBridge_nativeSetPublicUrl(
+        JNIEnv* env,
+        jobject /* this */,
+        jstring jUrl) {
+    const char* urlChars = jUrl ? env->GetStringUTFChars(jUrl, nullptr) : nullptr;
+    std::string url(urlChars ? urlChars : "");
+    if (urlChars) env->ReleaseStringUTFChars(jUrl, urlChars);
+    TunnelForwarder::getInstance().setPublicUrl(url);
 }
 
 JNIEXPORT void JNICALL

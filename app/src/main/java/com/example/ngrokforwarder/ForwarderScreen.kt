@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import java.util.Locale
 import androidx.compose.animation.AnimatedVisibility
@@ -41,6 +42,8 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.automirrored.filled.Send
@@ -261,10 +264,14 @@ fun ForwarderScreen(
                             authtoken = state.authtoken,
                             isAuthtokenVisible = state.isAuthtokenVisible,
                             isEmbeddedFromEnv = state.isAuthtokenEmbeddedFromEnv,
+                            devUrl = state.devUrl,
+                            isDevUrlEmbedded = state.isDevUrlEmbedded,
                             tunnelStatus = state.tunnelStatus,
                             errorMessage = state.errorMessage,
                             onAuthtokenChanged = { viewModel.onAuthtokenChanged(it) },
                             onToggleVisibility = { viewModel.toggleAuthtokenVisibility() },
+                            onDevUrlChanged = { viewModel.onDevUrlChanged(it) },
+                            onResetDevUrl = { viewModel.resetDevUrlToDefault() },
                             onToggleTunnel = { viewModel.toggleTunnel() }
                         )
 
@@ -276,15 +283,24 @@ fun ForwarderScreen(
                                 isSendingPing = state.isSendingTestPing,
                                 onCopyClicked = {
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    clipboard.setPrimaryClip(ClipData.newPlainText("Ngrok URL", state.publicUrl))
-                                    Toast.makeText(context, "Public URL copied", Toast.LENGTH_SHORT).show()
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("Dev URL", state.publicUrl))
+                                    Toast.makeText(context, "Dev URL copied", Toast.LENGTH_SHORT).show()
                                 },
                                 onShareClicked = {
                                     val intent = Intent(Intent.ACTION_SEND).apply {
                                         type = "text/plain"
+                                        putExtra(Intent.EXTRA_SUBJECT, "Dev Tunnel URL")
                                         putExtra(Intent.EXTRA_TEXT, state.publicUrl)
                                     }
-                                    context.startActivity(Intent.createChooser(intent, "Share Tunnel URL"))
+                                    context.startActivity(Intent.createChooser(intent, "Share Dev URL"))
+                                },
+                                onOpenBrowserClicked = {
+                                    try {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(state.publicUrl))
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Unable to open browser: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    }
                                 },
                                 onTestPingClicked = { viewModel.runCodexTest("CHAT") }
                             )
@@ -390,10 +406,14 @@ fun ForwarderScreen(
                             authtoken = state.authtoken,
                             isAuthtokenVisible = state.isAuthtokenVisible,
                             isEmbeddedFromEnv = state.isAuthtokenEmbeddedFromEnv,
+                            devUrl = state.devUrl,
+                            isDevUrlEmbedded = state.isDevUrlEmbedded,
                             tunnelStatus = state.tunnelStatus,
                             errorMessage = state.errorMessage,
                             onAuthtokenChanged = { viewModel.onAuthtokenChanged(it) },
                             onToggleVisibility = { viewModel.toggleAuthtokenVisibility() },
+                            onDevUrlChanged = { viewModel.onDevUrlChanged(it) },
+                            onResetDevUrl = { viewModel.resetDevUrlToDefault() },
                             onToggleTunnel = { viewModel.toggleTunnel() }
                         )
                     }
@@ -407,16 +427,24 @@ fun ForwarderScreen(
                                 isSendingPing = state.isSendingTestPing,
                                 onCopyClicked = {
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    clipboard.setPrimaryClip(ClipData.newPlainText("Ngrok URL", state.publicUrl))
-                                    Toast.makeText(context, "Public URL copied to clipboard", Toast.LENGTH_SHORT).show()
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("Dev URL", state.publicUrl))
+                                    Toast.makeText(context, "Dev URL copied to clipboard", Toast.LENGTH_SHORT).show()
                                 },
                                 onShareClicked = {
                                     val intent = Intent(Intent.ACTION_SEND).apply {
                                         type = "text/plain"
-                                        putExtra(Intent.EXTRA_SUBJECT, "Ngrok Tunnel URL")
+                                        putExtra(Intent.EXTRA_SUBJECT, "Dev Tunnel URL")
                                         putExtra(Intent.EXTRA_TEXT, state.publicUrl)
                                     }
-                                    context.startActivity(Intent.createChooser(intent, "Share Tunnel URL"))
+                                    context.startActivity(Intent.createChooser(intent, "Share Dev URL"))
+                                },
+                                onOpenBrowserClicked = {
+                                    try {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(state.publicUrl))
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Unable to open browser: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    }
                                 },
                                 onTestPingClicked = { viewModel.runCodexTest("CHAT") }
                             )

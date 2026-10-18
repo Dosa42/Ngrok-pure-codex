@@ -25,6 +25,9 @@ class ForwarderViewModel(application: Application) : AndroidViewModel(applicatio
         val envToken = repository.getEmbeddedEnvToken()
         val savedToken = repository.getSavedAuthtoken()
         val initialToken = savedToken.ifBlank { envToken }
+        val envDevUrl = repository.getEmbeddedDevUrl()
+        val savedDevUrl = repository.getSavedDevUrl()
+        val initialDevUrl = savedDevUrl.ifBlank { envDevUrl }
         val savedHost = repository.getSavedTargetHost()
         val savedPort = repository.getSavedTargetPort()
 
@@ -32,6 +35,8 @@ class ForwarderViewModel(application: Application) : AndroidViewModel(applicatio
             it.copy(
                 authtoken = initialToken,
                 isAuthtokenEmbeddedFromEnv = initialToken == envToken && envToken.isNotBlank(),
+                devUrl = initialDevUrl,
+                isDevUrlEmbedded = initialDevUrl == envDevUrl,
                 targetHost = savedHost,
                 targetPort = savedPort,
                 targetPortInput = savedPort.toString()
@@ -39,6 +44,7 @@ class ForwarderViewModel(application: Application) : AndroidViewModel(applicatio
         }
 
         repository.saveTarget(savedHost, savedPort)
+        repository.saveDevUrl(initialDevUrl)
         probeCurrentTarget()
 
         // Telemetry loop
@@ -78,6 +84,22 @@ class ForwarderViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun toggleAuthtokenVisibility() {
         _uiState.update { it.copy(isAuthtokenVisible = !it.isAuthtokenVisible) }
+    }
+
+    fun onDevUrlChanged(newUrl: String) {
+        val envDevUrl = repository.getEmbeddedDevUrl()
+        _uiState.update {
+            it.copy(
+                devUrl = newUrl,
+                isDevUrlEmbedded = newUrl == envDevUrl
+            )
+        }
+        repository.saveDevUrl(newUrl)
+    }
+
+    fun resetDevUrlToDefault() {
+        val envDevUrl = repository.getEmbeddedDevUrl()
+        onDevUrlChanged(envDevUrl)
     }
 
     fun onTargetHostChanged(newHost: String) {
@@ -165,7 +187,8 @@ class ForwarderViewModel(application: Application) : AndroidViewModel(applicatio
                 val success = repository.startTunnel(
                     _uiState.value.targetHost.trim().ifBlank { "127.0.0.1" },
                     _uiState.value.targetPort,
-                    _uiState.value.authtoken.trim()
+                    _uiState.value.authtoken.trim(),
+                    _uiState.value.devUrl.trim().ifBlank { repository.getEmbeddedDevUrl() }
                 )
 
                 if (success) {

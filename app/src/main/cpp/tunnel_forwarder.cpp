@@ -126,7 +126,7 @@ int TunnelForwarder::getTargetPort() const {
     return m_targetPort;
 }
 
-bool TunnelForwarder::start(const std::string& targetHost, int targetPort, const std::string& authtoken) {
+bool TunnelForwarder::start(const std::string& targetHost, int targetPort, const std::string& authtoken, const std::string& devUrl) {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_targetHost = targetHost;
     m_targetPort = targetPort;
@@ -134,22 +134,32 @@ bool TunnelForwarder::start(const std::string& targetHost, int targetPort, const
 
     SocketPool::getInstance().setTarget(targetHost, targetPort);
     m_state.store(TunnelState::CONNECTING);
-    LOGI("Starting pooled forwarder for %s:%d", targetHost.c_str(), targetPort);
+    LOGI("Starting pooled forwarder for %s:%d using dev URL", targetHost.c_str(), targetPort);
 
-    std::string tokenPrefix = authtoken.empty() ? "demo" : authtoken.substr(0, std::min<size_t>(6, authtoken.length()));
-    m_publicUrl = "https://" + tokenPrefix + "-" + std::to_string(targetPort) + ".ngrok-free.app";
+    // Completely remove custom personal ngrok URL (which produces offline ERR_NGROK_3200 endpoints)
+    // Directly use the provided active dev URL instead
+    if (!devUrl.empty()) {
+        m_publicUrl = devUrl;
+    } else {
+        m_publicUrl = "https://ais-dev-t7ylyxqor5zeetjs5fxfv3-571187916303.europe-west3.run.app";
+    }
 
     m_state.store(TunnelState::ONLINE);
     m_lastError = "";
 
     std::string startJson = "{\"event\":\"TUNNEL_STARTED\",\"url\":\"" + m_publicUrl +
                             "\",\"target\":\"" + targetHost + ":" + std::to_string(targetPort) +
-                            "\",\"pooling_enabled\":true,\"timestamp\":" + std::to_string(currentTimestampMs()) + "}";
+                            "\",\"pooling_enabled\":true,\"endpoint_mode\":\"DEV_URL\",\"timestamp\":" + std::to_string(currentTimestampMs()) + "}";
     std::printf("%s\n", startJson.c_str());
     std::fflush(stdout);
     LOGI("%s", startJson.c_str());
 
     return true;
+}
+
+void TunnelForwarder::setPublicUrl(const std::string& url) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_publicUrl = url;
 }
 
 void TunnelForwarder::stop() {

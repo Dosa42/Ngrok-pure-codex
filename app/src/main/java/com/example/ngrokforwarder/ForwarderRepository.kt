@@ -45,6 +45,25 @@ class ForwarderRepository(context: Context) {
         bridge.nativeSetTarget(host, port)
     }
 
+    fun getEmbeddedDevUrl(): String {
+        return try {
+            val url = BuildConfig.DEV_URL
+            if (url.isNotBlank() && url != "DEFAULT_DEV_URL") url else "https://ais-dev-t7ylyxqor5zeetjs5fxfv3-571187916303.europe-west3.run.app"
+        } catch (e: Exception) {
+            "https://ais-dev-t7ylyxqor5zeetjs5fxfv3-571187916303.europe-west3.run.app"
+        }
+    }
+
+    fun getSavedDevUrl(): String {
+        val stored = prefs.getString("dev_url", "") ?: ""
+        return if (stored.isNotBlank()) stored else getEmbeddedDevUrl()
+    }
+
+    fun saveDevUrl(url: String) {
+        prefs.edit().putString("dev_url", url).apply()
+        bridge.nativeSetPublicUrl(url)
+    }
+
     suspend fun probePort(host: String, port: Int): Pair<PortStatus, String> =
         withContext(Dispatchers.IO) {
             val res = bridge.nativeProbePort(host, port)
@@ -110,11 +129,12 @@ class ForwarderRepository(context: Context) {
             }
         }
 
-    suspend fun startTunnel(host: String, port: Int, token: String): Boolean =
+    suspend fun startTunnel(host: String, port: Int, token: String, devUrl: String): Boolean =
         withContext(Dispatchers.IO) {
             saveAuthtoken(token)
+            saveDevUrl(devUrl)
             saveTarget(host, port)
-            bridge.nativeStart(host, port, token)
+            bridge.nativeStart(host, port, token, devUrl)
         }
 
     suspend fun stopTunnel(): Unit = withContext(Dispatchers.IO) {

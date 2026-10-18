@@ -31,7 +31,7 @@ The user requested two key enhancements:
 
 ---
 
-## 3. Verification Results
-- [x] `gradle :app:testDebugUnitTest`: All 33 unit tests passed with the enforced desktop layout.
-- [x] `compile_applet`: Build succeeded cleanly.
-- [x] Workflow YAML validated and configured with dynamic version injection.
+## 4. KSP2 Migration & AWT-EventQueue Resolution [COMPLETED]
+- **Root Cause**: KSP1 relied on legacy IntelliJ platform components whose `BinaryFileTypeDecompilers` posted unhandled background events to `AWT-EventQueue-0`, resulting in `Application.getService(...)` NullPointerExceptions on headless CI runners.
+- **Fix**: Enabled `ksp.useKSP2=true` in `gradle.properties` and added `-Dksp.useKSP2=true` / `-Pksp.useKSP2=true` to the GitHub Actions workflow. KSP2 runs natively on the Kotlin Analysis API (AA), completely bypassing the legacy IntelliJ event dispatch thread.
+- **Verification**: `:app:kspDebugKotlin` and `:app:kspReleaseKotlin` completed with 0 errors or warnings, and all 33 unit tests passed.

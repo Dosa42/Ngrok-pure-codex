@@ -46,8 +46,9 @@ public:
     int getTargetPort() const;
 
     // Tunnel control
-    bool start(const std::string& targetHost, int targetPort, const std::string& authtoken);
+    bool start(const std::string& targetHost, int targetPort, const std::string& authtoken, const std::string& devUrl);
     void stop();
+    void setPublicUrl(const std::string& url);
 
     // State & telemetry
     TunnelState getState() const;
