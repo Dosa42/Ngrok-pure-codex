@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
+import java.util.Locale
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -12,10 +13,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -29,12 +32,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -67,12 +72,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -94,7 +102,6 @@ import com.example.ui.theme.NeonCyan
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -105,167 +112,85 @@ fun ForwarderScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        containerColor = DarkBackground,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "Ngrok Forwarder",
-                            fontWeight = FontWeight.Bold,
-                            color = TextPrimary,
-                            fontSize = 17.sp
-                        )
-                        TunnelStatusBadge(state.tunnelStatus)
-                    }
-                },
-                actions = {
-                    Box(
-                        modifier = Modifier
-                            .background(EmeraldGreen.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
-                            .border(1.dp, EmeraldGreen.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = "POOL: ON",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = EmeraldGreen
-                        )
-                    }
-                    IconButton(
-                        onClick = { viewModel.probeCurrentTarget() },
-                        modifier = Modifier.testTag("refresh_probe_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Probe Socket",
-                            tint = NeonCyan
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkSurface)
-            )
-        }
-    ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // 1. Dynamic Configurable Target Local Service
-            item {
-                DynamicTargetServiceCard(
-                    host = state.targetHost,
-                    portInput = state.targetPortInput,
-                    activePort = state.targetPort,
-                    portStatus = state.portStatus,
-                    statusMessage = state.portStatusMessage,
-                    onHostChanged = { viewModel.onTargetHostChanged(it) },
-                    onPortChanged = { viewModel.onTargetPortInputChanged(it) },
-                    onPresetSelected = { viewModel.selectPortPreset(it) },
-                    onProbeClicked = { viewModel.probeCurrentTarget() }
-                )
-            }
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val isDesktopDeX = maxWidth >= 600.dp
 
-            // 1.5 Codex Proxy Discovery Banner (when detected)
-            if (state.codexInfo.isDetected) {
-                item {
-                    CodexProxyBannerCard(
-                        codexInfo = state.codexInfo,
-                        onTestClicked = { viewModel.runCodexTest(it) }
-                    )
-                }
-            }
-
-            // 2. Pre-Configured Test Suite (Codex Endpoints)
-            item {
-                CodexTestSuiteCard(
-                    isSendingPing = state.isSendingTestPing,
-                    targetPort = state.targetPort,
-                    onTestTriggered = { viewModel.runCodexTest(it) }
-                )
-            }
-
-            // 3. Ngrok Credentials Card (with Embedded token indicator)
-            item {
-                CredentialsCard(
-                    authtoken = state.authtoken,
-                    isAuthtokenVisible = state.isAuthtokenVisible,
-                    isEmbeddedFromEnv = state.isAuthtokenEmbeddedFromEnv,
-                    tunnelStatus = state.tunnelStatus,
-                    errorMessage = state.errorMessage,
-                    onAuthtokenChanged = { viewModel.onAuthtokenChanged(it) },
-                    onToggleVisibility = { viewModel.toggleAuthtokenVisibility() },
-                    onToggleTunnel = { viewModel.toggleTunnel() }
-                )
-            }
-
-            // 4. Active Public Tunnel URL Card (when Online)
-            if (state.tunnelStatus == TunnelStatus.ONLINE && state.publicUrl != null) {
-                item {
-                    PublicTunnelUrlCard(
-                        publicUrl = state.publicUrl!!,
-                        targetHost = state.targetHost,
-                        targetPort = state.targetPort,
-                        isSendingPing = state.isSendingTestPing,
-                        onCopyClicked = {
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("Ngrok URL", state.publicUrl))
-                            Toast.makeText(context, "Public URL copied to clipboard", Toast.LENGTH_SHORT).show()
-                        },
-                        onShareClicked = {
-                            val intent = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_SUBJECT, "Ngrok Tunnel URL")
-                                putExtra(Intent.EXTRA_TEXT, state.publicUrl)
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = DarkBackground,
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Ngrok Forwarder",
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary,
+                                fontSize = 17.sp
+                            )
+                            TunnelStatusBadge(state.tunnelStatus)
+                            if (isDesktopDeX) {
+                                Box(
+                                    modifier = Modifier
+                                        .background(Color(0xFF1E1B4B), RoundedCornerShape(8.dp))
+                                        .border(1.dp, Color(0xFF6366F1), RoundedCornerShape(8.dp))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.DesktopWindows,
+                                            contentDescription = null,
+                                            tint = Color(0xFFA5B4FC),
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Text(
+                                            text = "DeX Desktop",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFC7D2FE)
+                                        )
+                                    }
+                                }
                             }
-                            context.startActivity(Intent.createChooser(intent, "Share Tunnel URL"))
-                        },
-                        onTestPingClicked = {
-                            viewModel.runCodexTest("CHAT")
                         }
-                    )
-                }
-            }
-
-            // 5. Socket Connection Pool & Telemetry
-            item {
-                TelemetryAndPoolSection(
-                    metrics = state.metrics,
-                    poolMetrics = state.poolMetrics
-                )
-            }
-
-            // 6. Live JSON Terminal & Full Stdout Feed
-            item {
-                JsonTerminalHeader(
-                    eventCount = state.jsonLogs.size,
-                    searchQuery = state.jsonSearchQuery,
-                    onSearchQueryChanged = { viewModel.onJsonSearchQueryChanged(it) },
-                    onCopyFullStdout = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipboard.setPrimaryClip(ClipData.newPlainText("Ngrok Stdout Logs", state.rawStdoutString))
-                        Toast.makeText(context, "Full stdout JSON copied to clipboard", Toast.LENGTH_SHORT).show()
                     },
-                    onExportStdout = {
-                        val intent = Intent(Intent.ACTION_SEND).apply {
-                            type = "application/json"
-                            putExtra(Intent.EXTRA_SUBJECT, "Ngrok Forwarder Stdout JSON Logs")
-                            putExtra(Intent.EXTRA_TEXT, state.rawStdoutString)
+                    actions = {
+                        Box(
+                            modifier = Modifier
+                                .background(EmeraldGreen.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                                .border(1.dp, EmeraldGreen.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "POOL: ON",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = EmeraldGreen
+                            )
                         }
-                        context.startActivity(Intent.createChooser(intent, "Export Stdout JSON"))
-                    }
+                        IconButton(
+                            onClick = { viewModel.probeCurrentTarget() },
+                            modifier = Modifier
+                                .pointerHoverIcon(PointerIcon.Hand)
+                                .testTag("refresh_probe_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Probe Socket",
+                                tint = NeonCyan
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkSurface)
                 )
             }
-
+        ) { innerPadding ->
             val filteredLogs = if (state.jsonSearchQuery.isBlank()) {
                 state.jsonLogs
             } else {
@@ -277,29 +202,266 @@ fun ForwarderScreen(
                 }
             }
 
-            if (filteredLogs.isEmpty()) {
-                item {
-                    EmptyJsonTerminalCard(isTunnelOnline = state.tunnelStatus == TunnelStatus.ONLINE)
+            if (isDesktopDeX) {
+                // Expanded Dual-Pane DevTools Layout for Samsung DeX
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // Left Control Pane (Fixed width ~ 400dp)
+                    Column(
+                        modifier = Modifier
+                            .width(400.dp)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        DynamicTargetServiceCard(
+                            host = state.targetHost,
+                            portInput = state.targetPortInput,
+                            activePort = state.targetPort,
+                            portStatus = state.portStatus,
+                            statusMessage = state.portStatusMessage,
+                            onHostChanged = { viewModel.onTargetHostChanged(it) },
+                            onPortChanged = { viewModel.onTargetPortInputChanged(it) },
+                            onPresetSelected = { viewModel.selectPortPreset(it) },
+                            onProbeClicked = { viewModel.probeCurrentTarget() }
+                        )
+
+                        if (state.codexInfo.isDetected) {
+                            CodexProxyBannerCard(
+                                codexInfo = state.codexInfo,
+                                onTestClicked = { viewModel.runCodexTest(it) }
+                            )
+                        }
+
+                        CodexTestSuiteCard(
+                            isSendingPing = state.isSendingTestPing,
+                            targetPort = state.targetPort,
+                            onTestTriggered = { viewModel.runCodexTest(it) }
+                        )
+
+                        CredentialsCard(
+                            authtoken = state.authtoken,
+                            isAuthtokenVisible = state.isAuthtokenVisible,
+                            isEmbeddedFromEnv = state.isAuthtokenEmbeddedFromEnv,
+                            tunnelStatus = state.tunnelStatus,
+                            errorMessage = state.errorMessage,
+                            onAuthtokenChanged = { viewModel.onAuthtokenChanged(it) },
+                            onToggleVisibility = { viewModel.toggleAuthtokenVisibility() },
+                            onToggleTunnel = { viewModel.toggleTunnel() }
+                        )
+
+                        if (state.tunnelStatus == TunnelStatus.ONLINE && state.publicUrl != null) {
+                            PublicTunnelUrlCard(
+                                publicUrl = state.publicUrl!!,
+                                targetHost = state.targetHost,
+                                targetPort = state.targetPort,
+                                isSendingPing = state.isSendingTestPing,
+                                onCopyClicked = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("Ngrok URL", state.publicUrl))
+                                    Toast.makeText(context, "Public URL copied", Toast.LENGTH_SHORT).show()
+                                },
+                                onShareClicked = {
+                                    val intent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_TEXT, state.publicUrl)
+                                    }
+                                    context.startActivity(Intent.createChooser(intent, "Share Tunnel URL"))
+                                },
+                                onTestPingClicked = { viewModel.runCodexTest("CHAT") }
+                            )
+                        }
+
+                        TelemetryAndPoolSection(
+                            metrics = state.metrics,
+                            poolMetrics = state.poolMetrics
+                        )
+                    }
+
+                    VerticalDivider(color = DarkOutline, thickness = 1.dp)
+
+                    // Right Live Terminal Pane (Flex 1)
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        JsonTerminalHeader(
+                            eventCount = state.jsonLogs.size,
+                            searchQuery = state.jsonSearchQuery,
+                            onSearchQueryChanged = { viewModel.onJsonSearchQueryChanged(it) },
+                            onCopyFullStdout = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("Ngrok Stdout Logs", state.rawStdoutString))
+                                Toast.makeText(context, "Full stdout JSON copied", Toast.LENGTH_SHORT).show()
+                            },
+                            onExportStdout = {
+                                val intent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "application/json"
+                                    putExtra(Intent.EXTRA_TEXT, state.rawStdoutString)
+                                }
+                                context.startActivity(Intent.createChooser(intent, "Export Stdout JSON"))
+                            }
+                        )
+
+                        if (filteredLogs.isEmpty()) {
+                            EmptyJsonTerminalCard(isTunnelOnline = state.tunnelStatus == TunnelStatus.ONLINE)
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                items(
+                                    items = filteredLogs,
+                                    key = { it.timestamp.toString() + it.path + it.durationMs }
+                                ) { logItem ->
+                                    JsonLogCard(
+                                        log = logItem,
+                                        onClick = { viewModel.selectJsonLog(logItem) }
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             } else {
-                items(
-                    items = filteredLogs,
-                    key = { it.timestamp.toString() + it.path + it.durationMs }
-                ) { logItem ->
-                    JsonLogCard(
-                        log = logItem,
-                        onClick = { viewModel.selectJsonLog(logItem) }
-                    )
-                }
-            }
+                // Compact / Mobile Layout
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    item {
+                        DynamicTargetServiceCard(
+                            host = state.targetHost,
+                            portInput = state.targetPortInput,
+                            activePort = state.targetPort,
+                            portStatus = state.portStatus,
+                            statusMessage = state.portStatusMessage,
+                            onHostChanged = { viewModel.onTargetHostChanged(it) },
+                            onPortChanged = { viewModel.onTargetPortInputChanged(it) },
+                            onPresetSelected = { viewModel.selectPortPreset(it) },
+                            onProbeClicked = { viewModel.probeCurrentTarget() }
+                        )
+                    }
 
-            item {
-                Spacer(modifier = Modifier.height(32.dp))
+                    if (state.codexInfo.isDetected) {
+                        item {
+                            CodexProxyBannerCard(
+                                codexInfo = state.codexInfo,
+                                onTestClicked = { viewModel.runCodexTest(it) }
+                            )
+                        }
+                    }
+
+                    item {
+                        CodexTestSuiteCard(
+                            isSendingPing = state.isSendingTestPing,
+                            targetPort = state.targetPort,
+                            onTestTriggered = { viewModel.runCodexTest(it) }
+                        )
+                    }
+
+                    item {
+                        CredentialsCard(
+                            authtoken = state.authtoken,
+                            isAuthtokenVisible = state.isAuthtokenVisible,
+                            isEmbeddedFromEnv = state.isAuthtokenEmbeddedFromEnv,
+                            tunnelStatus = state.tunnelStatus,
+                            errorMessage = state.errorMessage,
+                            onAuthtokenChanged = { viewModel.onAuthtokenChanged(it) },
+                            onToggleVisibility = { viewModel.toggleAuthtokenVisibility() },
+                            onToggleTunnel = { viewModel.toggleTunnel() }
+                        )
+                    }
+
+                    if (state.tunnelStatus == TunnelStatus.ONLINE && state.publicUrl != null) {
+                        item {
+                            PublicTunnelUrlCard(
+                                publicUrl = state.publicUrl!!,
+                                targetHost = state.targetHost,
+                                targetPort = state.targetPort,
+                                isSendingPing = state.isSendingTestPing,
+                                onCopyClicked = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("Ngrok URL", state.publicUrl))
+                                    Toast.makeText(context, "Public URL copied to clipboard", Toast.LENGTH_SHORT).show()
+                                },
+                                onShareClicked = {
+                                    val intent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_SUBJECT, "Ngrok Tunnel URL")
+                                        putExtra(Intent.EXTRA_TEXT, state.publicUrl)
+                                    }
+                                    context.startActivity(Intent.createChooser(intent, "Share Tunnel URL"))
+                                },
+                                onTestPingClicked = { viewModel.runCodexTest("CHAT") }
+                            )
+                        }
+                    }
+
+                    item {
+                        TelemetryAndPoolSection(
+                            metrics = state.metrics,
+                            poolMetrics = state.poolMetrics
+                        )
+                    }
+
+                    item {
+                        JsonTerminalHeader(
+                            eventCount = state.jsonLogs.size,
+                            searchQuery = state.jsonSearchQuery,
+                            onSearchQueryChanged = { viewModel.onJsonSearchQueryChanged(it) },
+                            onCopyFullStdout = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("Ngrok Stdout Logs", state.rawStdoutString))
+                                Toast.makeText(context, "Full stdout JSON copied to clipboard", Toast.LENGTH_SHORT).show()
+                            },
+                            onExportStdout = {
+                                val intent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "application/json"
+                                    putExtra(Intent.EXTRA_SUBJECT, "Ngrok Forwarder Stdout JSON Logs")
+                                    putExtra(Intent.EXTRA_TEXT, state.rawStdoutString)
+                                }
+                                context.startActivity(Intent.createChooser(intent, "Export Stdout JSON"))
+                            }
+                        )
+                    }
+
+                    if (filteredLogs.isEmpty()) {
+                        item {
+                            EmptyJsonTerminalCard(isTunnelOnline = state.tunnelStatus == TunnelStatus.ONLINE)
+                        }
+                    } else {
+                        items(
+                            items = filteredLogs,
+                            key = { it.timestamp.toString() + it.path + it.durationMs }
+                        ) { logItem ->
+                            JsonLogCard(
+                                log = logItem,
+                                onClick = { viewModel.selectJsonLog(logItem) }
+                            )
+                        }
+                    }
+
+                    item {
+                        Spacer(modifier = Modifier.height(32.dp))
+                    }
+                }
             }
         }
     }
 
-    // Modal Sheet: Raw JSON Transaction Inspector
     if (state.selectedJsonLog != null) {
         JsonLogDetailSheet(
             log = state.selectedJsonLog!!,
@@ -312,7 +474,6 @@ fun ForwarderScreen(
         )
     }
 
-    // Test Response Dialog
     if (state.testPingResult != null) {
         AlertDialog(
             onDismissRequest = { viewModel.dismissTestPingResult() },
@@ -343,7 +504,10 @@ fun ForwarderScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { viewModel.dismissTestPingResult() }) {
+                TextButton(
+                    onClick = { viewModel.dismissTestPingResult() },
+                    modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)
+                ) {
                     Text("Close", color = NeonCyan)
                 }
             }
@@ -471,25 +635,21 @@ fun CodexTestSuiteCard(
             ) {
                 TestChip(
                     label = "GET /host.json",
-                    protocol = "MANIFEST",
                     enabled = !isSendingPing,
                     onClick = { onTestTriggered("MANIFEST") }
                 )
                 TestChip(
                     label = "GET /v1/models",
-                    protocol = "MODELS",
                     enabled = !isSendingPing,
                     onClick = { onTestTriggered("MODELS") }
                 )
                 TestChip(
                     label = "POST /v1/chat/completions",
-                    protocol = "CHAT",
                     enabled = !isSendingPing,
                     onClick = { onTestTriggered("CHAT") }
                 )
                 TestChip(
                     label = "GET /v1/models/catalog",
-                    protocol = "CATALOG",
                     enabled = !isSendingPing,
                     onClick = { onTestTriggered("CATALOG") }
                 )
@@ -501,7 +661,6 @@ fun CodexTestSuiteCard(
 @Composable
 fun TestChip(
     label: String,
-    protocol: String,
     enabled: Boolean,
     onClick: () -> Unit
 ) {
@@ -514,7 +673,8 @@ fun TestChip(
             contentColor = NeonCyan
         ),
         shape = RoundedCornerShape(8.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, DarkOutline)
+        border = androidx.compose.foundation.BorderStroke(1.dp, DarkOutline),
+        modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)
     ) {
         Icon(imageVector = Icons.Default.Send, contentDescription = null, modifier = Modifier.size(13.dp))
         Spacer(modifier = Modifier.width(6.dp))
@@ -565,7 +725,9 @@ fun DynamicTargetServiceCard(
 
                 OutlinedButton(
                     onClick = onProbeClicked,
-                    modifier = Modifier.testTag("probe_port_button"),
+                    modifier = Modifier
+                        .pointerHoverIcon(PointerIcon.Hand)
+                        .testTag("probe_port_button"),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = NeonCyan),
                     border = ButtonDefaults.outlinedButtonBorder().copy(
@@ -651,6 +813,7 @@ fun DynamicTargetServiceCard(
                         selected = isSelected,
                         onClick = { onPresetSelected(preset) },
                         label = { Text(":$preset", fontFamily = FontFamily.Monospace, fontSize = 12.sp) },
+                        modifier = Modifier.pointerHoverIcon(PointerIcon.Hand),
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = NeonCyan.copy(alpha = 0.2f),
                             selectedLabelColor = NeonCyan,
@@ -760,7 +923,7 @@ fun CredentialsCard(
                 visualTransformation = if (isAuthtokenVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onToggleVisibility) {
+                        IconButton(onClick = onToggleVisibility, modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)) {
                             Icon(
                                 imageVector = if (isAuthtokenVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                                 contentDescription = "Toggle token visibility",
@@ -768,7 +931,7 @@ fun CredentialsCard(
                             )
                         }
                         if (authtoken.isNotBlank()) {
-                            IconButton(onClick = { onAuthtokenChanged("") }) {
+                            IconButton(onClick = { onAuthtokenChanged("") }, modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)) {
                                 Icon(
                                     imageVector = Icons.Default.Clear,
                                     contentDescription = "Clear token",
@@ -821,6 +984,7 @@ fun CredentialsCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp)
+                    .pointerHoverIcon(PointerIcon.Hand)
                     .testTag("toggle_tunnel_button"),
                 shape = RoundedCornerShape(10.dp),
                 colors = ButtonDefaults.buttonColors(
@@ -905,7 +1069,10 @@ fun PublicTunnelUrlCard(
             ) {
                 OutlinedButton(
                     onClick = onCopyClicked,
-                    modifier = Modifier.weight(1f).testTag("copy_url_button"),
+                    modifier = Modifier
+                        .weight(1f)
+                        .pointerHoverIcon(PointerIcon.Hand)
+                        .testTag("copy_url_button"),
                     contentPadding = PaddingValues(vertical = 8.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
                     border = ButtonDefaults.outlinedButtonBorder().copy(
@@ -919,7 +1086,10 @@ fun PublicTunnelUrlCard(
 
                 OutlinedButton(
                     onClick = onShareClicked,
-                    modifier = Modifier.weight(1f).testTag("share_url_button"),
+                    modifier = Modifier
+                        .weight(1f)
+                        .pointerHoverIcon(PointerIcon.Hand)
+                        .testTag("share_url_button"),
                     contentPadding = PaddingValues(vertical = 8.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
                     border = ButtonDefaults.outlinedButtonBorder().copy(
@@ -934,7 +1104,10 @@ fun PublicTunnelUrlCard(
                 Button(
                     onClick = onTestPingClicked,
                     enabled = !isSendingPing,
-                    modifier = Modifier.weight(1.3f).testTag("test_ping_button"),
+                    modifier = Modifier
+                        .weight(1.3f)
+                        .pointerHoverIcon(PointerIcon.Hand)
+                        .testTag("test_ping_button"),
                     contentPadding = PaddingValues(vertical = 8.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = DarkSurfaceVariant,
@@ -1095,10 +1268,22 @@ fun JsonTerminalHeader(
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                IconButton(onClick = onCopyFullStdout, modifier = Modifier.size(32.dp).testTag("copy_json_button")) {
+                IconButton(
+                    onClick = onCopyFullStdout,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .pointerHoverIcon(PointerIcon.Hand)
+                        .testTag("copy_json_button")
+                ) {
                     Icon(imageVector = Icons.Default.ContentCopy, contentDescription = "Copy JSON", tint = TextSecondary, modifier = Modifier.size(16.dp))
                 }
-                IconButton(onClick = onExportStdout, modifier = Modifier.size(32.dp).testTag("export_stdout_button")) {
+                IconButton(
+                    onClick = onExportStdout,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .pointerHoverIcon(PointerIcon.Hand)
+                        .testTag("export_stdout_button")
+                ) {
                     Icon(imageVector = Icons.Default.Share, contentDescription = "Export Stdout", tint = TextSecondary, modifier = Modifier.size(16.dp))
                 }
             }
@@ -1110,7 +1295,9 @@ fun JsonTerminalHeader(
             placeholder = { Text("Filter JSON by protocol, path, status...", fontSize = 12.sp) },
             leadingIcon = { Icon(imageVector = Icons.Default.Search, contentDescription = null, tint = TextMuted, modifier = Modifier.size(18.dp)) },
             singleLine = true,
-            modifier = Modifier.fillMaxWidth().testTag("json_search_input"),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("json_search_input"),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = NeonCyan,
                 unfocusedBorderColor = DarkOutline,
@@ -1133,7 +1320,9 @@ fun EmptyJsonTerminalCard(isTunnelOnline: Boolean) {
         border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(DarkOutline))
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(24.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Icon(imageVector = Icons.Default.Terminal, contentDescription = null, tint = TextMuted, modifier = Modifier.size(32.dp))
@@ -1162,6 +1351,7 @@ fun JsonLogCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .pointerHoverIcon(PointerIcon.Hand)
             .clickable(onClick = onClick)
             .testTag("json_log_card"),
         colors = CardDefaults.cardColors(containerColor = DarkSurface),
@@ -1253,7 +1443,7 @@ fun ProtocolBadge(protocol: String) {
     Box(
         modifier = Modifier
             .background(color.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
-            .border(1.dp, color.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
+            .border(1.dp, color.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
             .padding(horizontal = 5.dp, vertical = 2.dp)
     ) {
         Text(
@@ -1370,7 +1560,10 @@ fun JsonLogDetailSheet(
                     fontSize = 16.sp,
                     color = TextPrimary
                 )
-                IconButton(onClick = onDismiss) {
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)
+                ) {
                     Icon(imageVector = Icons.Default.Clear, contentDescription = "Close", tint = TextSecondary)
                 }
             }
@@ -1400,7 +1593,9 @@ fun JsonLogDetailSheet(
 
             Button(
                 onClick = onCopySingleJson,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .pointerHoverIcon(PointerIcon.Hand),
                 colors = ButtonDefaults.buttonColors(containerColor = NeonCyan, contentColor = Color(0xFF00363D))
             ) {
                 Icon(imageVector = Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
