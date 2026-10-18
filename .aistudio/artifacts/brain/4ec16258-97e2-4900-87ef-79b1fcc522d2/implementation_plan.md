@@ -1,117 +1,70 @@
-# Native JNI In-Process Ngrok Forwarder for 127.0.0.1:8080/*
+# GitHub Actions Workflow for Release APK Build & Publishing
 
-A native Android application featuring an in-process C++ JNI engine to forward actual local services running on `127.0.0.1:8080/*` to the public internet via ngrok, with zero mocks, zero fake servers, and real socket-level traffic monitoring.
+Automated CI/CD pipeline (`.github/workflows/build-release-apk.yml`) to compile, native-link, self-sign, and publish release APKs with NDK/CMake support, GitHub workflow artifact storage, and automated GitHub Releases.
 
 ---
 
 ### User Review & Critical Decisions
 
 > [!IMPORTANT]
-> **Revisions Incorporated**:
-> - **Zero Mock Policy**: Completely eliminated all mock servers, fake responses, and demo HTTP servers.
-> - **Real Local Service Forwarding Only**: The native C++ engine targets the actual local service listening on `127.0.0.1:8080/*` via raw POSIX sockets (`connect()` to `127.0.0.1:8080`). If no local service is active on 8080, it reports real `ECONNREFUSED` connection states.
-> - **Native C++ JNI Socket Core**: Direct C++ implementation (`tunnel_engine.cpp`) with JNI export methods to manage tunnel sessions, bi-directional socket multiplexing, and byte stream dispatching between the remote ngrok endpoint and `127.0.0.1:8080`.
+> The following choices confirmed in Phase 1 guide this workflow:
 
-- **Confirmed Decision 1**: Target endpoint strictly locked to real local service at `127.0.0.1:8080/*`.
-- **Confirmed Decision 2**: Ngrok authentication token configured via secure UI input field or `.env` variable (`NGROK_AUTHTOKEN`), passed directly into the native C++ engine.
-- **Confirmed Decision 3**: Real socket metrics, live tunnel URL generation, connection state indicator (Connected, Connection Refused on 8080, Tunneling Active), and live stream logs of actual HTTP/TCP traffic passing through the forwarder.
+- **Confirmed Decision 1 (Self-Contained CI Signing)**: The workflow automatically provisions a self-contained release keystore using `keytool` during the CI run (with fallback to optional repository secrets if provided), guaranteeing that `assembleRelease` produces a fully signed, installable APK without manual keystore upload.
+- **Confirmed Decision 2 (Workflow Triggers)**: Triggers automatically on:
+  - Push to `main` branch
+  - Tag creation matching `v*` (e.g. `v1.0.0`)
+  - Manual execution via `workflow_dispatch` with optional build inputs
+- **Confirmed Decision 3 (Artifact Publishing & Releases)**:
+  - Always uploads the compiled release APK to GitHub Workflow Run Artifacts (`actions/upload-artifact@v4`) retained for 30 days.
+  - When triggered by a version tag (`v*`), automatically creates a GitHub Release with changelog and attaches the APK binary (`softprops/action-gh-release@v2`).
+- **Confirmed Decision 4 (Native C++ Toolchain in CI)**: Configures Java 21, Android SDK, Gradle cache, CMake 3.22.1, and Android NDK 27.2.12479018 to ensure the native JNI C++ engine (`libngrokforwarder.so`) compiles seamlessly.
 
 ---
 
 ### 1. Overview & Core Concept
 
-- **What It Does**: Establishes an in-process native JNI bridge in C++ that connects to the ngrok tunneling service and proxies incoming internet traffic directly into an existing local service running on `127.0.0.1:8080/*` on the Android device.
-- **Target Audience / Persona**: Engineers, testers, and power users running local services, daemons, or microservices on Android at `127.0.0.1:8080` that need to be reached from the outside world.
-- **Key Value**: Direct, low-latency in-process C++ forwarding without external binary dependencies, providing instant public HTTPS access to local 8080 services.
+- **What It Does**: Automates the end-to-end build process for the Ngrok Forwarder Android application on Ubuntu GitHub runners. It prepares `.env` configuration, installs required NDK/CMake native toolchains, generates a release keystore, executes `gradle :app:assembleRelease`, signs and zipaligns the APK, and publishes the deliverables.
+- **Target Audience**: Maintainers, developers, and users needing immediate access to production-ready, signed APK binaries on every commit or version release.
+- **Key Value**: 100% reproducible, zero-configuration cloud builds producing installable APKs directly downloadable from GitHub Actions and Releases.
 
 ---
 
-### 2. User Experience & Visual Design
+### 2. Workflow Architecture & Steps
 
-#### Key User Flows
-1. **Target Verification & Auth Setup**:
-   - The user opens the app. The UI shows the status of target `127.0.0.1:8080` (probes the port to show if the user's local service is currently listening).
-   - The user enters their ngrok Authtoken (persisted securely on-device).
-2. **Start Native Forwarder**:
-   - Tapping **"Start In-Process Forwarder"** calls the native JNI method `NativeTunnel.startForwarder("127.0.0.1", 8080, authToken)`.
-   - The native C++ layer initiates the tunnel session, binds the event loop, and returns the assigned public HTTPS forwarding URL.
-3. **Live Public Access & Metrics**:
-   - Public URL is displayed with quick Copy and Share actions.
-   - Live socket telemetry displays actual bytes transferred (TX/RX), active client socket connections, and real-time requests relayed to `127.0.0.1:8080/*`.
-   - If the local service on 8080 is down or crashes, the UI immediately surfaces genuine socket error status (`ECONNREFUSED: No service listening at 127.0.0.1:8080`).
-
-#### Visual Identity & Theme
-- **Theme**: DevTools Dark Terminal (`#0A0E17` background, `#111827` surface).
-- **Accents**: High-contrast Neon Cyan (`#00F0FF`) for active tunnel links, Emerald Green (`#10B981`) for live 8080 socket connectivity, and Coral Red (`#EF4444`) for local socket refused states.
-- **Typography**: Monospace typography for ports, IP addresses, URLs, and real-time request paths.
-
----
-
-### 3. Key Product Decisions & Trade-Offs
-
-- **Decision 1: Direct POSIX Socket Forwarding in Native C++**:
-  - *Chosen Approach*: The native C++ layer handles the TCP socket connection to `127.0.0.1:8080` using standard POSIX socket APIs (`socket`, `connect`, `select`/`poll`, `send`, `recv`).
-  - *Why*: Ensures maximum throughput, direct OS-level connection to local loopback, and eliminates JVM socket overhead for payload transmission.
-- **Decision 2: Strict Error Reporting for 8080 Service State**:
-  - *Chosen Approach*: If the target service on 8080 is not running, the forwarder reports genuine connection errors rather than swallowing errors or fabricating responses.
-  - *Why*: Transparent feedback so the developer knows immediately whether their target service on 8080 is responding.
-- **Decision 3: In-Memory Real Traffic Relay Inspector**:
-  - *Chosen Approach*: The native engine notifies the Kotlin layer of actual relayed HTTP request lines, headers, response status codes, and latencies via JNI callbacks into a StateFlow buffer.
-  - *Why*: Full real-time visibility into what internet clients are sending to `127.0.0.1:8080/*`.
-
----
-
-### 4. Technical Architecture & Data Strategy
-
-#### System Architecture & Flow Diagram
+#### Build Pipeline Sequence
 
 ```
-[ External Internet Client ]
+[ Git Push / Tag / Dispatch ]
              │
-             │ HTTPS Request (e.g. POST /api/webhook)
              ▼
-    [ Ngrok Cloud Edge ]
-             │
-             │ Encrypted Tunnel Connection (TLS)
-             ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 Android Application Process                 │
-│                                                             │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │           Native C++ JNI Engine (native-lib)          │  │
-│  │  - JNI Export: startForwarder(host, port, token)       │  │
-│  │  - JNI Export: stopForwarder()                        │  │
-│  │  - JNI Export: pollTrafficEvent()                     │  │
-│  │  - Native Thread: In-Process Socket Forwarding Loop   │  │
-│  │  - POSIX Sockets: connect("127.0.0.1", 8080)          │  │
-│  └───────────────────────────┬───────────────────────────┘  │
-│                              │                              │
-│                              ▼ Raw TCP Stream Proxy         │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │             Actual Target Local Service               │  │
-│  │                  127.0.0.1:8080/*                     │  │
-│  │            (User's Real Local Web Server)             │  │
-│  └───────────────────────────────────────────────────────┘  │
-│                              ▲                              │
-│                              │ Real Socket Events           │
-│  ┌───────────────────────────┴───────────────────────────┐  │
-│  │      Kotlin UI & State Management (Jetpack Compose)   │  │
-│  │  - NativeTunnelBridge (JNI Wrapper)                   │  │
-│  │  - ForwarderViewModel (StateFlow, metrics, logs)      │  │
-│  │  - ForwarderScreen (Controls, Real URL, Live Traffic) │  │
-│  └───────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│  GitHub Actions Runner (ubuntu-latest)                 │
+│                                                        │
+│  1. Checkout Code (actions/checkout@v4)                │
+│  2. Setup JDK 21 (actions/setup-java@v4)               │
+│  3. Setup Android SDK, NDK 27.2 & CMake 3.22.1         │
+│  4. Gradle Dependency & Build Cache                    │
+│  5. Environment Setup (.env pre-seeding)               │
+│  6. Self-Contained Release Keystore Generation         │
+│  7. Build Release APK (gradle :app:assembleRelease)    │
+│  8. Upload APK Artifact (actions/upload-artifact@v4)   │
+│  9. Publish GitHub Release (on tag v*)                 │
+└────────────────────────────────────────────────────────┘
 ```
 
-#### Native JNI Interface Specification (`NativeTunnelBridge`)
-- `external fun nativeStart(host: String, port: Int, authtoken: String): Int`
-- `external fun nativeStop(): Int`
-- `external fun nativeGetPublicUrl(): String?`
-- `external fun nativeGetStatus(): Int` (0 = STOPPED, 1 = CONNECTING, 2 = ONLINE, -1 = ERROR)
-- `external fun nativeGetStats(): LongArray` (bytesIn, bytesOut, activeConns, totalRequests)
-- `external fun nativeProbeLocalPort(host: String, port: Int): Boolean`
+#### Key Steps Breakdown:
+1. **Checkout**: `actions/checkout@v4` with full depth for release notes generation.
+2. **JDK Setup**: `actions/setup-java@v4` with distribution `temurin` and version `21`.
+3. **Android NDK & CMake Setup**: Uses `android-actions/setup-android@v3` or sdkmanager to ensure NDK `27.2.12479018` and CMake `3.22.1` are present for C++ JNI compilation.
+4. **Environment Initialization**: Creates `.env` from `.env.example` so the Secrets Gradle Plugin generates `BuildConfig` fields without errors.
+5. **Keystore Generation**: Generates `my-upload-key.jks` with alias `upload` and password `android`, passing `KEYSTORE_PATH`, `STORE_PASSWORD`, and `KEY_PASSWORD` as environment variables matching `app/build.gradle.kts`.
+6. **Compilation**: Runs `gradle :app:assembleRelease --no-daemon --stacktrace`.
+7. **Artifact Archive**: Collects `app/build/outputs/apk/release/*.apk` and uploads as `ngrok-forwarder-release-apk`.
+8. **Release Publishing**: For version tags, runs `softprops/action-gh-release@v2` with `generate_release_notes: true`.
 
-#### State & Data Handling
-- Real-time port health checker (`probeLocalPort("127.0.0.1", 8080)`) run on interval to inform user if their local server is active.
-- Encrypted or SharedPreferences storage for the user's ngrok Authtoken.
-- Circular buffer for real socket transaction logs.
+---
+
+### 3. File Changes
+
+- Create `.github/workflows/build-release-apk.yml`: Complete GitHub Actions workflow YAML.
+- Re-create minimal `/.env` if required locally to keep workspace cleanly synced.

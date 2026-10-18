@@ -3,6 +3,7 @@
 #include <vector>
 #include <sstream>
 #include "tunnel_forwarder.h"
+#include "socket_pool.h"
 
 extern "C" {
 
@@ -17,6 +18,19 @@ Java_com_example_ngrokforwarder_NativeTunnelBridge_nativeProbePort(
     if (hostChars) env->ReleaseStringUTFChars(jHost, hostChars);
 
     return TunnelForwarder::getInstance().probePort(host, jPort);
+}
+
+JNIEXPORT void JNICALL
+Java_com_example_ngrokforwarder_NativeTunnelBridge_nativeSetTarget(
+        JNIEnv* env,
+        jobject /* this */,
+        jstring jHost,
+        jint jPort) {
+    const char* hostChars = env->GetStringUTFChars(jHost, nullptr);
+    std::string host(hostChars ? hostChars : "127.0.0.1");
+    if (hostChars) env->ReleaseStringUTFChars(jHost, hostChars);
+
+    TunnelForwarder::getInstance().setTarget(host, jPort);
 }
 
 JNIEXPORT jboolean JNICALL
@@ -87,6 +101,25 @@ Java_com_example_ngrokforwarder_NativeTunnelBridge_nativeGetStats(
     return arr;
 }
 
+JNIEXPORT jlongArray JNICALL
+Java_com_example_ngrokforwarder_NativeTunnelBridge_nativeGetPoolStats(
+        JNIEnv* env,
+        jobject /* this */) {
+    PoolStats stats = TunnelForwarder::getInstance().getPoolStats();
+    jlongArray arr = env->NewLongArray(5);
+    if (!arr) return nullptr;
+
+    jlong elements[5] = {
+        static_cast<jlong>(stats.currentIdleSize),
+        static_cast<jlong>(stats.poolHits),
+        static_cast<jlong>(stats.poolMisses),
+        static_cast<jlong>(stats.activeConnections),
+        static_cast<jlong>(stats.maxIdleLimit)
+    };
+    env->SetLongArrayRegion(arr, 0, 5, elements);
+    return arr;
+}
+
 JNIEXPORT jbyteArray JNICALL
 Java_com_example_ngrokforwarder_NativeTunnelBridge_nativeForwardBytes(
         JNIEnv* env,
@@ -115,34 +148,12 @@ Java_com_example_ngrokforwarder_NativeTunnelBridge_nativeForwardBytes(
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_example_ngrokforwarder_NativeTunnelBridge_nativeGetRecentEventsJson(
+Java_com_example_ngrokforwarder_NativeTunnelBridge_nativeGetStdoutJsonLogs(
         JNIEnv* env,
         jobject /* this */,
         jint maxCount) {
-    auto events = TunnelForwarder::getInstance().getRecentEvents(maxCount > 0 ? static_cast<size_t>(maxCount) : 50);
-
-    // Build simple JSON array
-    std::ostringstream ss;
-    ss << "[";
-    for (size_t i = 0; i < events.size(); ++i) {
-        const auto& evt = events[i];
-        if (i > 0) ss << ",";
-        ss << "{";
-        ss << "\"timestamp\":" << evt.timestamp << ",";
-        ss << "\"method\":\"" << evt.method << "\",";
-        ss << "\"path\":\"" << evt.path << "\",";
-        ss << "\"statusCode\":" << evt.statusCode << ",";
-        ss << "\"durationMs\":" << evt.durationMs << ",";
-        ss << "\"bytesReceived\":" << evt.bytesReceived << ",";
-        ss << "\"bytesSent\":" << evt.bytesSent << ",";
-        ss << "\"clientIp\":\"" << evt.clientIp << "\",";
-        ss << "\"statusMessage\":\"" << evt.statusMessage << "\"";
-        ss << "}";
-    }
-    ss << "]";
-
-    std::string jsonStr = ss.str();
-    return env->NewStringUTF(jsonStr.c_str());
+    std::string logs = TunnelForwarder::getInstance().getStdoutJsonLogs(maxCount > 0 ? static_cast<size_t>(maxCount) : 50);
+    return env->NewStringUTF(logs.c_str());
 }
 
 } // extern "C"

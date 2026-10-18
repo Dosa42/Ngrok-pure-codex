@@ -3,7 +3,7 @@ package com.example.ngrokforwarder
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.BuildConfig
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,41 +19,53 @@ class ForwarderViewModel(application: Application) : AndroidViewModel(applicatio
     private val _uiState = MutableStateFlow(ForwarderUiState())
     val uiState: StateFlow<ForwarderUiState> = _uiState.asStateFlow()
 
+    private var probeJob: Job? = null
+
     init {
-        // Load stored token or fallback to BuildConfig token if configured
-        val savedToken = repository.getSavedAuthtoken().ifBlank {
-            val buildToken = try {
-                BuildConfig.NGROK_AUTHTOKEN
-            } catch (e: Exception) {
-                ""
-            }
-            if (buildToken != "DEFAULT_TOKEN") buildToken else ""
+        val envToken = repository.getEmbeddedEnvToken()
+        val savedToken = repository.getSavedAuthtoken()
+        val initialToken = savedToken.ifBlank { envToken }
+        val savedHost = repository.getSavedTargetHost()
+        val savedPort = repository.getSavedTargetPort()
+
+        _uiState.update {
+            it.copy(
+                authtoken = initialToken,
+                isAuthtokenEmbeddedFromEnv = initialToken == envToken && envToken.isNotBlank(),
+                targetHost = savedHost,
+                targetPort = savedPort,
+                targetPortInput = savedPort.toString()
+            )
         }
 
-        _uiState.update { it.copy(authtoken = savedToken) }
+        repository.saveTarget(savedHost, savedPort)
+        probeCurrentTarget()
 
-        // Initial port probe on launch
-        probeTargetPort()
-
-        // Background poller for metrics and events while ViewModel is active
+        // Telemetry loop
         viewModelScope.launch {
             while (isActive) {
                 refreshTelemetry()
-                delay(1500)
+                delay(1200)
             }
         }
 
-        // Periodic port health checker (every 4 seconds)
+        // Port health checker loop
         viewModelScope.launch {
             while (isActive) {
-                probeTargetPort()
+                probeCurrentTarget()
                 delay(4000)
             }
         }
     }
 
     fun onAuthtokenChanged(newToken: String) {
-        _uiState.update { it.copy(authtoken = newToken) }
+        val envToken = repository.getEmbeddedEnvToken()
+        _uiState.update {
+            it.copy(
+                authtoken = newToken,
+                isAuthtokenEmbeddedFromEnv = newToken == envToken && envToken.isNotBlank()
+            )
+        }
         repository.saveAuthtoken(newToken)
     }
 
@@ -61,17 +73,65 @@ class ForwarderViewModel(application: Application) : AndroidViewModel(applicatio
         _uiState.update { it.copy(isAuthtokenVisible = !it.isAuthtokenVisible) }
     }
 
-    fun probeTargetPort() {
-        viewModelScope.launch {
-            val (status, message) = repository.probePort(
-                _uiState.value.targetHost,
-                _uiState.value.targetPort
+    fun onTargetHostChanged(newHost: String) {
+        _uiState.update { it.copy(targetHost = newHost) }
+        repository.saveTarget(newHost, _uiState.value.targetPort)
+        debounceProbe()
+    }
+
+    fun onTargetPortInputChanged(newPortInput: String) {
+        val digitsOnly = newPortInput.filter { it.isDigit() }.take(5)
+        _uiState.update { it.copy(targetPortInput = digitsOnly) }
+
+        val portNum = digitsOnly.toIntOrNull()
+        if (portNum != null && portNum in 1..65535) {
+            _uiState.update { it.copy(targetPort = portNum) }
+            repository.saveTarget(_uiState.value.targetHost, portNum)
+            debounceProbe()
+        }
+    }
+
+    fun selectPortPreset(presetPort: Int) {
+        _uiState.update {
+            it.copy(
+                targetPort = presetPort,
+                targetPortInput = presetPort.toString()
             )
+        }
+        repository.saveTarget(_uiState.value.targetHost, presetPort)
+        probeCurrentTarget()
+    }
+
+    private fun debounceProbe() {
+        probeJob?.cancel()
+        probeJob = viewModelScope.launch {
+            delay(500)
+            probeCurrentTarget()
+        }
+    }
+
+    fun probeCurrentTarget() {
+        viewModelScope.launch {
+            val host = _uiState.value.targetHost.trim().ifBlank { "127.0.0.1" }
+            val port = _uiState.value.targetPort
+            val (status, message) = repository.probePort(host, port)
             _uiState.update {
                 it.copy(
                     portStatus = status,
                     portStatusMessage = message
                 )
+            }
+
+            // If active and listening, attempt Codex Proxy discovery
+            if (status == PortStatus.LISTENING) {
+                val codex = repository.discoverCodexProxy(host, port)
+                _uiState.update {
+                    it.copy(codexInfo = codex ?: CodexProxyInfo(isDetected = false))
+                }
+            } else {
+                _uiState.update {
+                    it.copy(codexInfo = CodexProxyInfo(isDetected = false))
+                }
             }
         }
     }
@@ -96,7 +156,7 @@ class ForwarderViewModel(application: Application) : AndroidViewModel(applicatio
                     )
                 }
                 val success = repository.startTunnel(
-                    _uiState.value.targetHost,
+                    _uiState.value.targetHost.trim().ifBlank { "127.0.0.1" },
                     _uiState.value.targetPort,
                     _uiState.value.authtoken.trim()
                 )
@@ -127,7 +187,8 @@ class ForwarderViewModel(application: Application) : AndroidViewModel(applicatio
     private fun refreshTelemetry() {
         val currentTunnelStatus = repository.getTunnelStatus()
         val metrics = repository.getMetrics()
-        val events = repository.getRecentEvents(50)
+        val poolMetrics = repository.getPoolMetrics()
+        val (rawStdout, jsonLogs) = repository.getStdoutJsonLogs(50)
         val publicUrl = if (currentTunnelStatus == TunnelStatus.ONLINE) repository.getPublicUrl() else null
 
         _uiState.update {
@@ -139,26 +200,33 @@ class ForwarderViewModel(application: Application) : AndroidViewModel(applicatio
                 },
                 publicUrl = publicUrl ?: it.publicUrl,
                 metrics = metrics,
-                trafficLogs = events
+                poolMetrics = poolMetrics,
+                rawStdoutString = rawStdout,
+                jsonLogs = jsonLogs
             )
         }
     }
 
-    fun selectTrafficItem(item: TrafficItem?) {
-        _uiState.update { it.copy(selectedTrafficItem = item) }
+    fun onJsonSearchQueryChanged(query: String) {
+        _uiState.update { it.copy(jsonSearchQuery = query) }
     }
 
-    fun clearLogs() {
-        _uiState.update { it.copy(trafficLogs = emptyList()) }
+    fun selectJsonLog(log: JsonLogEntry?) {
+        _uiState.update { it.copy(selectedJsonLog = log) }
     }
 
-    fun sendTestPing(path: String = "/") {
+    fun runCodexTest(testType: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(isSendingTestPing = true, testPingResult = null) }
-            val result = repository.sendTestRequest(path)
+            val (title, result) = repository.executeCodexTest(
+                _uiState.value.targetHost,
+                _uiState.value.targetPort,
+                testType
+            )
             _uiState.update {
                 it.copy(
                     isSendingTestPing = false,
+                    testPingTitle = title,
                     testPingResult = result
                 )
             }

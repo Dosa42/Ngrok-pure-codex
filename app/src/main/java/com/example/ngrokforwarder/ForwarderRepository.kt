@@ -2,9 +2,11 @@ package com.example.ngrokforwarder
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.example.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
+import org.json.JSONObject
 import java.nio.charset.StandardCharsets
 
 class ForwarderRepository(context: Context) {
@@ -12,15 +14,38 @@ class ForwarderRepository(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("ngrok_prefs", Context.MODE_PRIVATE)
     private val bridge: NativeTunnelBridge = NativeTunnelBridge()
 
+    fun getEmbeddedEnvToken(): String {
+        return try {
+            val token = BuildConfig.NGROK_AUTHTOKEN
+            if (token.isNotBlank() && token != "DEFAULT_TOKEN") token else ""
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
     fun getSavedAuthtoken(): String {
-        return prefs.getString("authtoken", "") ?: ""
+        val stored = prefs.getString("authtoken", "") ?: ""
+        return if (stored.isNotBlank()) stored else getEmbeddedEnvToken()
     }
 
     fun saveAuthtoken(token: String) {
         prefs.edit().putString("authtoken", token).apply()
     }
 
-    suspend fun probePort(host: String = "127.0.0.1", port: Int = 8080): Pair<PortStatus, String> =
+    fun getSavedTargetHost(): String {
+        return prefs.getString("target_host", "127.0.0.1") ?: "127.0.0.1"
+    }
+
+    fun getSavedTargetPort(): Int {
+        return prefs.getInt("target_port", 8080)
+    }
+
+    fun saveTarget(host: String, port: Int) {
+        prefs.edit().putString("target_host", host).putInt("target_port", port).apply()
+        bridge.nativeSetTarget(host, port)
+    }
+
+    suspend fun probePort(host: String, port: Int): Pair<PortStatus, String> =
         withContext(Dispatchers.IO) {
             val res = bridge.nativeProbePort(host, port)
             when (res) {
@@ -30,9 +55,65 @@ class ForwarderRepository(context: Context) {
             }
         }
 
-    suspend fun startTunnel(host: String = "127.0.0.1", port: Int = 8080, token: String): Boolean =
+    suspend fun discoverCodexProxy(host: String, port: Int): CodexProxyInfo? =
+        withContext(Dispatchers.IO) {
+            try {
+                val req = "GET /host.json HTTP/1.1\r\n" +
+                        "Host: $host:$port\r\n" +
+                        "Accept: application/json\r\n" +
+                        "Connection: close\r\n\r\n"
+
+                val bytes = bridge.nativeForwardBytes(req.toByteArray(StandardCharsets.UTF_8), "127.0.0.1")
+                if (bytes == null || bytes.isEmpty()) return@withContext null
+
+                val respStr = String(bytes, StandardCharsets.UTF_8)
+                val bodyIndex = respStr.indexOf("\r\n\r\n")
+                if (bodyIndex == -1) return@withContext null
+
+                val jsonBody = respStr.substring(bodyIndex + 4).trim()
+                if (!jsonBody.startsWith("{")) return@withContext null
+
+                val root = JSONObject(jsonBody)
+                if (root.optString("manifest_format") != "codex-proxy-host") return@withContext null
+
+                val version = root.optString("manifest_version", "1.0.0")
+                val desc = root.optString("description", "")
+                val endpointObj = root.optJSONObject("endpoint")
+                val baseUrl = endpointObj?.optString("base_url") ?: "http://$host:$port"
+
+                val runtime = root.optJSONObject("runtime_snapshot")
+                val modelCount = runtime?.optInt("listed_model_count") ?: 0
+                val defaultModel = runtime?.optString("default_model") ?: "gpt-5.6-sol"
+
+                val modelList = mutableListOf<String>()
+                val modelsArr = runtime?.optJSONArray("models")
+                if (modelsArr != null) {
+                    for (i in 0 until modelsArr.length()) {
+                        val m = modelsArr.optJSONObject(i)
+                        val id = m?.optString("id")
+                        if (!id.isNullOrBlank()) modelList.add(id)
+                    }
+                }
+
+                CodexProxyInfo(
+                    isDetected = true,
+                    manifestFormat = "codex-proxy-host",
+                    version = version,
+                    modelCount = if (modelList.isNotEmpty()) modelList.size else modelCount,
+                    models = modelList,
+                    defaultModel = defaultModel,
+                    description = desc,
+                    baseUrl = baseUrl
+                )
+            } catch (e: Exception) {
+                null
+            }
+        }
+
+    suspend fun startTunnel(host: String, port: Int, token: String): Boolean =
         withContext(Dispatchers.IO) {
             saveAuthtoken(token)
+            saveTarget(host, port)
             bridge.nativeStart(host, port, token)
         }
 
@@ -71,51 +152,105 @@ class ForwarderRepository(context: Context) {
         }
     }
 
-    fun getRecentEvents(maxCount: Int = 50): List<TrafficItem> {
-        val jsonStr = bridge.nativeGetRecentEventsJson(maxCount)
-        if (jsonStr.isBlank() || jsonStr == "[]") return emptyList()
+    fun getPoolMetrics(): PoolMetrics {
+        val stats: LongArray? = bridge.nativeGetPoolStats()
+        return if (stats != null && stats.size >= 5) {
+            PoolMetrics(
+                idleCount = stats[0],
+                poolHits = stats[1],
+                poolMisses = stats[2],
+                activeConnections = stats[3],
+                maxIdle = stats[4]
+            )
+        } else {
+            PoolMetrics()
+        }
+    }
+
+    fun getStdoutJsonLogs(maxCount: Int = 50): Pair<String, List<JsonLogEntry>> {
+        val jsonStr = bridge.nativeGetStdoutJsonLogs(maxCount)
+        if (jsonStr.isBlank() || jsonStr == "[\n\n]" || jsonStr == "[]") {
+            return "[]" to emptyList()
+        }
 
         return try {
             val jsonArray = JSONArray(jsonStr)
-            val list = mutableListOf<TrafficItem>()
+            val list = mutableListOf<JsonLogEntry>()
             for (i in 0 until jsonArray.length()) {
-                val obj = jsonArray.getJSONObject(i)
+                val obj: JSONObject = jsonArray.getJSONObject(i)
                 list.add(
-                    TrafficItem(
+                    JsonLogEntry(
                         timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
+                        event = obj.optString("event", "FORWARD_HTTP"),
+                        protocol = obj.optString("protocol", "GENERIC_HTTP"),
+                        client = obj.optString("client", "127.0.0.1"),
+                        target = obj.optString("target", "127.0.0.1:8080"),
                         method = obj.optString("method", "GET"),
                         path = obj.optString("path", "/"),
-                        statusCode = obj.optInt("statusCode", 200),
-                        durationMs = obj.optInt("durationMs", 0),
-                        bytesReceived = obj.optInt("bytesReceived", 0),
-                        bytesSent = obj.optInt("bytesSent", 0),
-                        clientIp = obj.optString("clientIp", "127.0.0.1"),
-                        statusMessage = obj.optString("statusMessage", "")
+                        status = obj.optInt("status", 200),
+                        durationMs = obj.optInt("duration_ms", 0),
+                        bytesIn = obj.optLong("bytes_in", 0L),
+                        bytesOut = obj.optLong("bytes_out", 0L),
+                        pooled = obj.optBoolean("pooled", false),
+                        error = obj.optString("error", ""),
+                        rawJson = obj.toString(2)
                     )
                 )
             }
-            list.reversed()
+            jsonStr to list.reversed()
         } catch (e: Exception) {
-            emptyList()
+            jsonStr to emptyList()
         }
     }
 
-    suspend fun sendTestRequest(path: String = "/"): String = withContext(Dispatchers.IO) {
-        val rawRequest = "GET $path HTTP/1.1\r\n" +
-                "Host: 127.0.0.1:8080\r\n" +
-                "User-Agent: NgrokForwarder-NativeJNI/1.0\r\n" +
-                "Accept: */*\r\n" +
-                "Connection: close\r\n\r\n"
-
-        val responseBytes: ByteArray? = bridge.nativeForwardBytes(
-            rawRequest.toByteArray(StandardCharsets.UTF_8),
-            "127.0.0.1"
-        )
-
-        if (responseBytes != null && responseBytes.isNotEmpty()) {
-            String(responseBytes, StandardCharsets.UTF_8)
-        } else {
-            "No response received from 127.0.0.1:8080"
+    suspend fun executeCodexTest(host: String, port: Int, testType: String): Pair<String, String> =
+        withContext(Dispatchers.IO) {
+            when (testType.uppercase()) {
+                "MANIFEST" -> {
+                    val req = "GET /host.json HTTP/1.1\r\n" +
+                            "Host: $host:$port\r\n" +
+                            "User-Agent: NgrokForwarder-NativeJNI/1.0\r\n" +
+                            "Accept: application/json\r\n" +
+                            "Connection: close\r\n\r\n"
+                    val resp = bridge.nativeForwardBytes(req.toByteArray(StandardCharsets.UTF_8), "127.0.0.1")
+                    "Codex Host Manifest (/host.json)" to (resp?.let { String(it, StandardCharsets.UTF_8) } ?: "No response")
+                }
+                "MODELS" -> {
+                    val req = "GET /v1/models HTTP/1.1\r\n" +
+                            "Host: $host:$port\r\n" +
+                            "User-Agent: NgrokForwarder-NativeJNI/1.0\r\n" +
+                            "Accept: application/json\r\n" +
+                            "Connection: close\r\n\r\n"
+                    val resp = bridge.nativeForwardBytes(req.toByteArray(StandardCharsets.UTF_8), "127.0.0.1")
+                    "OpenAI Models List (/v1/models)" to (resp?.let { String(it, StandardCharsets.UTF_8) } ?: "No response")
+                }
+                "CATALOG" -> {
+                    val req = "GET /v1/models/catalog HTTP/1.1\r\n" +
+                            "Host: $host:$port\r\n" +
+                            "User-Agent: NgrokForwarder-NativeJNI/1.0\r\n" +
+                            "Accept: application/json\r\n" +
+                            "Connection: close\r\n\r\n"
+                    val resp = bridge.nativeForwardBytes(req.toByteArray(StandardCharsets.UTF_8), "127.0.0.1")
+                    "Codex Catalog (/v1/models/catalog)" to (resp?.let { String(it, StandardCharsets.UTF_8) } ?: "No response")
+                }
+                "CHAT" -> {
+                    val body = "{\"model\":\"gpt-6.1-sol\",\"messages\":[{\"role\":\"user\",\"content\":\"Ping from Ngrok Forwarder\"}],\"stream\":false}"
+                    val req = "POST /v1/chat/completions HTTP/1.1\r\n" +
+                            "Host: $host:$port\r\n" +
+                            "User-Agent: NgrokForwarder-NativeJNI/1.0\r\n" +
+                            "Content-Type: application/json\r\n" +
+                            "Content-Length: ${body.toByteArray(StandardCharsets.UTF_8).size}\r\n" +
+                            "Connection: close\r\n\r\n" + body
+                    val resp = bridge.nativeForwardBytes(req.toByteArray(StandardCharsets.UTF_8), "127.0.0.1")
+                    "OpenAI Chat Completion (/v1/chat/completions)" to (resp?.let { String(it, StandardCharsets.UTF_8) } ?: "No response")
+                }
+                else -> {
+                    val req = "GET / HTTP/1.1\r\n" +
+                            "Host: $host:$port\r\n" +
+                            "Connection: close\r\n\r\n"
+                    val resp = bridge.nativeForwardBytes(req.toByteArray(StandardCharsets.UTF_8), "127.0.0.1")
+                    "Ping :$port" to (resp?.let { String(it, StandardCharsets.UTF_8) } ?: "No response")
+                }
+            }
         }
-    }
 }

@@ -5,6 +5,7 @@
 #include <mutex>
 #include <atomic>
 #include <cstdint>
+#include "socket_pool.h"
 
 struct TrafficEvent {
     int64_t timestamp;
@@ -16,8 +17,7 @@ struct TrafficEvent {
     int bytesSent;
     std::string clientIp;
     std::string statusMessage;
-    std::string requestHeaders;
-    std::string responseHeaders;
+    std::string jsonLog;
 };
 
 struct ForwarderStats {
@@ -38,9 +38,12 @@ class TunnelForwarder {
 public:
     static TunnelForwarder& getInstance();
 
-    // Port probe: returns 0 if port is open and accepting connections,
-    // -1 if ECONNREFUSED, or errno on other socket errors
     int probePort(const std::string& host, int port);
+
+    // Dynamic target service configuration
+    void setTarget(const std::string& host, int port);
+    std::string getTargetHost() const;
+    int getTargetPort() const;
 
     // Tunnel control
     bool start(const std::string& targetHost, int targetPort, const std::string& authtoken);
@@ -51,16 +54,17 @@ public:
     std::string getPublicUrl() const;
     std::string getLastError() const;
     ForwarderStats getStats() const;
+    PoolStats getPoolStats() const;
 
-    // Direct forwarding relay: relays data directly to local socket at targetHost:targetPort
-    // and returns response payload via POSIX socket
+    // Direct forwarding relay using the SocketPool and emitting stdout JSON
     std::vector<uint8_t> forwardDirect(const std::vector<uint8_t>& requestData,
                                        const std::string& clientIp,
                                        int& outStatusCode,
                                        std::string& outErrorMessage);
 
-    // Event log buffer
+    // Event & stdout JSON log buffer
     std::vector<TrafficEvent> getRecentEvents(size_t maxEvents);
+    std::string getStdoutJsonLogs(size_t maxEvents);
     void recordEvent(const TrafficEvent& event);
 
 private:
@@ -77,7 +81,6 @@ private:
     mutable std::mutex m_mutex;
     std::atomic<uint64_t> m_bytesIn{0};
     std::atomic<uint64_t> m_bytesOut{0};
-    std::atomic<uint32_t> m_activeConnections{0};
     std::atomic<uint32_t> m_totalRequests{0};
 
     std::vector<TrafficEvent> m_events;

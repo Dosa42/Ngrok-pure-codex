@@ -7,6 +7,7 @@ add_library(
     SHARED
     native-lib.cpp
     tunnel_forwarder.cpp
+    socket_pool.cpp
 )
 
 find_library(
