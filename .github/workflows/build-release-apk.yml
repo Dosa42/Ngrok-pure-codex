@@ -42,37 +42,32 @@ jobs:
         run: |
           set -x
           ANDROID_SDK_PATH="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
-          echo "ANDROID_HOME=$ANDROID_SDK_PATH" >> $GITHUB_ENV
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_PATH" >> $GITHUB_ENV
+          echo "ANDROID_HOME=$ANDROID_SDK_PATH" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_PATH" >> "$GITHUB_ENV"
 
           # Ensure runner user has write permissions for licenses and components
           sudo chown -R "$(whoami)" "$ANDROID_SDK_PATH" 2>/dev/null || true
           mkdir -p "$ANDROID_SDK_PATH/licenses" 2>/dev/null || sudo mkdir -p "$ANDROID_SDK_PATH/licenses"
 
           # Pre-seed Android SDK and NDK license agreements
-          cat << 'EOF' | sudo tee "$ANDROID_SDK_PATH/licenses/android-sdk-license" > /dev/null
-8933bad161af4178b1185d1a37fbf41ea5269c55
-d56f5187479451eabf01fb78af6dfcb131a6481e
-24333f8a63b6825ea9c5514f83c2829b004d1fee
-EOF
+          printf '%s\n' \
+            "8933bad161af4178b1185d1a37fbf41ea5269c55" \
+            "d56f5187479451eabf01fb78af6dfcb131a6481e" \
+            "24333f8a63b6825ea9c5514f83c2829b004d1fee" | sudo tee "$ANDROID_SDK_PATH/licenses/android-sdk-license" > /dev/null
 
-          cat << 'EOF' | sudo tee "$ANDROID_SDK_PATH/licenses/android-sdk-preview-license" > /dev/null
-84831b9409646a918e30573bab4c9c91346d8abd
-EOF
+          printf '%s\n' \
+            "84831b9409646a918e30573bab4c9c91346d8abd" | sudo tee "$ANDROID_SDK_PATH/licenses/android-sdk-preview-license" > /dev/null
 
-          cat << 'EOF' | sudo tee "$ANDROID_SDK_PATH/licenses/android-googletv-license" > /dev/null
-601085b94cd77f0b54ff86406957099fed792631
-113668f445e453805e45261dd824f10791442620
-e6b7c2ab7ff22c87c008dddc40c810fb4c94bd57
-EOF
+          printf '%s\n' \
+            "601085b94cd77f0b54ff86406957099fed792631" \
+            "113668f445e453805e45261dd824f10791442620" \
+            "e6b7c2ab7ff22c87c008dddc40c810fb4c94bd57" | sudo tee "$ANDROID_SDK_PATH/licenses/android-googletv-license" > /dev/null
 
-          cat << 'EOF' | sudo tee "$ANDROID_SDK_PATH/licenses/android-sdk-arm-dbt-license" > /dev/null
-859f317696f67ef3d7f30a50a5560e7834b43903
-EOF
+          printf '%s\n' \
+            "859f317696f67ef3d7f30a50a5560e7834b43903" | sudo tee "$ANDROID_SDK_PATH/licenses/android-sdk-arm-dbt-license" > /dev/null
 
-          cat << 'EOF' | sudo tee "$ANDROID_SDK_PATH/licenses/mips-android-sysimage-license" > /dev/null
-e9acab5b5fbb560a72cfa4e233b49ab87f2a6678
-EOF
+          printf '%s\n' \
+            "e9acab5b5fbb560a72cfa4e233b49ab87f2a6678" | sudo tee "$ANDROID_SDK_PATH/licenses/mips-android-sysimage-license" > /dev/null
 
           sudo chmod -R 777 "$ANDROID_SDK_PATH/licenses" 2>/dev/null || true
           echo "Android licenses successfully pre-seeded. Gradle auto-download will manage dependencies."
@@ -104,34 +99,30 @@ EOF
                      /tmp/samsung_sdk/com/samsung/android/sdk/dex \
                      /tmp/samsung_sdk/android/content/res
 
-            cat << 'EOF' > /tmp/samsung_sdk/android/content/Context.java
-package android.content;
-public class Context {}
-EOF
+            printf '%s\n' \
+              'package android.content;' \
+              'public class Context {}' > /tmp/samsung_sdk/android/content/Context.java
 
-            cat << 'EOF' > /tmp/samsung_sdk/android/content/res/Configuration.java
-package android.content.res;
-public class Configuration {}
-EOF
+            printf '%s\n' \
+              'package android.content.res;' \
+              'public class Configuration {}' > /tmp/samsung_sdk/android/content/res/Configuration.java
 
-            cat << 'EOF' > /tmp/samsung_sdk/com/samsung/android/sdk/multiwindow/SMultiWindow.java
-package com.samsung.android.sdk.multiwindow;
-import android.content.Context;
-public class SMultiWindow {
-    public static final int FREEFORM = 1;
-    public static final int SPLIT = 2;
-    public void initialize(Context c) {}
-    public boolean isFeatureEnabled(int f) { return true; }
-}
-EOF
+            printf '%s\n' \
+              'package com.samsung.android.sdk.multiwindow;' \
+              'import android.content.Context;' \
+              'public class SMultiWindow {' \
+              '    public static final int FREEFORM = 1;' \
+              '    public static final int SPLIT = 2;' \
+              '    public void initialize(Context c) {}' \
+              '    public boolean isFeatureEnabled(int f) { return true; }' \
+              '}' > /tmp/samsung_sdk/com/samsung/android/sdk/multiwindow/SMultiWindow.java
 
-            cat << 'EOF' > /tmp/samsung_sdk/com/samsung/android/sdk/dex/DexManager.java
-package com.samsung.android.sdk.dex;
-import android.content.res.Configuration;
-public class DexManager {
-    public static boolean isDexMode(Configuration c) { return false; }
-}
-EOF
+            printf '%s\n' \
+              'package com.samsung.android.sdk.dex;' \
+              'import android.content.res.Configuration;' \
+              'public class DexManager {' \
+              '    public static boolean isDexMode(Configuration c) { return false; }' \
+              '}' > /tmp/samsung_sdk/com/samsung/android/sdk/dex/DexManager.java
 
             javac -source 11 -target 11 \
               /tmp/samsung_sdk/android/content/Context.java \
@@ -174,9 +165,9 @@ EOF
               -dname "CN=Android Debug, O=Android, C=US"
           fi
 
-          echo "KEYSTORE_PATH=${{ github.workspace }}/my-upload-key.jks" >> $GITHUB_ENV
-          echo "STORE_PASSWORD=android" >> $GITHUB_ENV
-          echo "KEY_PASSWORD=android" >> $GITHUB_ENV
+          echo "KEYSTORE_PATH=${{ github.workspace }}/my-upload-key.jks" >> "$GITHUB_ENV"
+          echo "STORE_PASSWORD=android" >> "$GITHUB_ENV"
+          echo "KEY_PASSWORD=android" >> "$GITHUB_ENV"
 
       - name: Build APKs
         env:
